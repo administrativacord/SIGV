@@ -1,19 +1,39 @@
-# SIGV Web - Fase 2.2 Estado del Proceso
+# SIGV Web - Fase 2.3 Configuración
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
 ## Ajustes aplicados en esta versión
 
-- Se cambió el nombre **Estado operativo** por **Estado del Proceso**.
-- **Estado del Proceso** ahora aparece como una sección/título al final del formulario, sin numeración.
-- Se aplicó el mismo criterio tanto en **Nuevo caso** como en el detalle editable de **Casos**.
-- Se actualizó el filtro de la sección **Casos** para buscar por los nuevos estados del proceso.
-- Se actualizaron las métricas del dashboard para trabajar con los nuevos nombres de estado.
-- Se mantiene la lógica automática inicial:
-  - Si faltan documentos: **Pendiente Documentación**.
-  - Si solo falta el soporte de pago de la asesoría: **Pendiente de pago Asesoría**.
-  - Si los documentos requeridos están completos: **Pendiente Agendamiento de Asesoría**.
-- La asesora puede cambiar manualmente el estado cuando el caso avance a etapas posteriores.
+- Se cambió la sección **Tarifas** por **Configuración**.
+- La nueva sección **Configuración** permite editar los valores de las tarifas de asesoría.
+- Se agregó edición de costos adicionales:
+  - Envío de documentación a Bogotá para renovaciones.
+  - Derechos consulares en USD.
+  - FedEx domicilio.
+  - FedEx Alto Prado.
+- Se agregó un listado editable de **Asesoras**.
+- El listado de asesoras queda conectado con:
+  - **Nuevo caso** > Asesor responsable.
+  - **Casos** > Detalle editable del caso > Asesor responsable.
+- Los formularios ahora usan selector de asesora, evitando escribir nombres manualmente y mejorando la uniformidad de los registros.
+- Los cambios en configuración se guardan automáticamente en el navegador mediante `localStorage`.
+- Al modificar tarifas o costos, los cálculos de casos y resúmenes se actualizan con la configuración vigente.
+
+## Se mantiene desde fases anteriores
+
+- Base React + Vite limpia y ejecutable.
+- Login simple de prueba.
+- Dashboard con métricas operativas.
+- Nuevo caso con campos obligatorios: asesor, nombre completo, teléfono y email.
+- Checklist dinámico según tipo de solicitud.
+- Estado del Proceso automático o manual.
+- Listado de casos con búsqueda y filtros.
+- Apertura y edición completa de cada caso.
+- Seguimiento operativo por caso.
+- Historial cronológico de movimientos.
+- Acciones rápidas.
+- Plantillas y respuestas rápidas personalizadas por caso.
+- Persistencia local en el navegador mediante `localStorage`.
 
 ## Estados del Proceso disponibles
 
@@ -25,24 +45,6 @@ Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 - Pendiente Facturación
 - Pendiente Cita embajada
 - Finalizado
-
-## Incluye desde la Fase 2
-
-- Base React + Vite limpia y ejecutable.
-- Login simple de prueba.
-- Dashboard con métricas operativas.
-- Nuevo caso con campos obligatorios: asesor, nombre completo, teléfono y email.
-- Cálculo automático de tarifas, FedEx, envío de documentación y derechos consulares.
-- Checklist dinámico según tipo de solicitud.
-- Estado del proceso automático o manual según avance del caso.
-- Listado de casos con búsqueda y filtros por estado del proceso y tipo de solicitud.
-- Apertura y edición completa de cada caso.
-- Seguimiento operativo por caso.
-- Historial cronológico de movimientos.
-- Acciones rápidas: asesoría agendada, pendiente cita embajada y finalizado.
-- Plantillas y respuestas rápidas personalizadas por caso.
-- Persistencia local en el navegador mediante localStorage.
-- Tabla de tarifas y gastos adicionales.
 
 ## Ejecutar
 
@@ -57,5 +59,5 @@ Clave: `1234`
 ## Notas
 
 - Esta fase todavía no conecta Google Sheets.
-- Los datos se guardan localmente en el navegador para pruebas internas.
+- Los datos y la configuración se guardan localmente en el navegador para pruebas internas.
 - El ZIP oficial no incluye `node_modules/`, `dist/` ni `package-lock.json`.

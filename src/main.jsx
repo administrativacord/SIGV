@@ -2,15 +2,31 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const APP_VERSION = 'Fase 2.2 Web · Estado del Proceso';
+const APP_VERSION = 'Fase 2.3 Web · Configuración';
 
-const tarifas = {
+const tarifasBase = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
   noAfiliado: { label: 'No afiliado', primeraVez: 190000, renovacion: 190000, actualizacion: 95000, globalEntry: null },
   premiumAfiliado: { label: 'Paquete Premium Afiliado', primeraVez: 210000, renovacion: 210000, actualizacion: null, globalEntry: null },
   premiumNoAfiliado: { label: 'Paquete Premium No Afiliado', primeraVez: 250000, renovacion: 250000, actualizacion: null, globalEntry: null },
   servicioAdicional: { label: 'Servicio adicional', primeraVez: null, renovacion: null, actualizacion: null, globalEntry: 100000 },
 };
+
+const costosBase = {
+  envioDocumentacionBogota: 155000,
+  fedexDomicilio: 68000,
+  fedexAltoPrado: 56000,
+  derechosConsularesUsd: 185,
+};
+
+const asesorasBase = ['Milena', 'Ximena', 'Uldis'];
+
+const configuracionBase = {
+  tarifas: tarifasBase,
+  costos: costosBase,
+  asesoras: asesorasBase,
+};
+
 
 const tiposSolicitud = [
   { id: 'primeraVez', label: 'Primera vez' },
@@ -113,6 +129,44 @@ function documentosRequeridos(tipoSolicitud) {
   return documentosPorTipo[tipoSolicitud] || documentosPorTipo.primeraVez;
 }
 
+function normalizarNumero(valor, fallback = null) {
+  if (valor === undefined) return fallback;
+  if (valor === '' || valor === null) return null;
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero : fallback;
+}
+
+function normalizarConfiguracion(config = {}) {
+  const tarifasGuardadas = config.tarifas || {};
+  const tarifas = Object.fromEntries(Object.entries(tarifasBase).map(([id, tarifa]) => {
+    const guardada = tarifasGuardadas[id] || {};
+    return [id, {
+      ...tarifa,
+      ...guardada,
+      label: guardada.label || tarifa.label,
+      primeraVez: normalizarNumero(guardada.primeraVez, tarifa.primeraVez),
+      renovacion: normalizarNumero(guardada.renovacion, tarifa.renovacion),
+      actualizacion: normalizarNumero(guardada.actualizacion, tarifa.actualizacion),
+      globalEntry: normalizarNumero(guardada.globalEntry, tarifa.globalEntry),
+    }];
+  }));
+
+  const costos = {
+    ...costosBase,
+    ...(config.costos || {}),
+    envioDocumentacionBogota: normalizarNumero(config.costos?.envioDocumentacionBogota, costosBase.envioDocumentacionBogota),
+    fedexDomicilio: normalizarNumero(config.costos?.fedexDomicilio, costosBase.fedexDomicilio),
+    fedexAltoPrado: normalizarNumero(config.costos?.fedexAltoPrado, costosBase.fedexAltoPrado),
+    derechosConsularesUsd: normalizarNumero(config.costos?.derechosConsularesUsd, costosBase.derechosConsularesUsd),
+  };
+
+  const asesoras = Array.isArray(config.asesoras)
+    ? config.asesoras.map(a => String(a || '').trim()).filter(Boolean)
+    : asesorasBase;
+
+  return { tarifas, costos, asesoras: asesoras.length ? asesoras : asesorasBase };
+}
+
 function inicialFormulario() {
   return {
     asesor: '',
@@ -172,11 +226,14 @@ function estadoAutomaticoProceso(requeridos, data) {
   return 'Pendiente Documentación';
 }
 
-function calcularCaso(data) {
+function calcularCaso(data, config = configuracionBase) {
+  const configuracion = normalizarConfiguracion(config);
+  const tarifas = configuracion.tarifas;
+  const costos = configuracion.costos;
   const tipoCliente = data.tipoCliente || data.tipoClienteKey;
   const tipoSolicitud = data.tipoSolicitud || data.tipoSolicitudKey;
   const tarifa = tarifas[tipoCliente]?.[tipoSolicitud];
-  const adicionalRenovacion = tipoSolicitud === 'renovacion' ? 155000 : 0;
+  const adicionalRenovacion = tipoSolicitud === 'renovacion' ? costos.envioDocumentacionBogota : 0;
   const requiereDerechos = tipoSolicitud === 'primeraVez' || tipoSolicitud === 'renovacion';
   const fedex = tipoSolicitud === 'primeraVez' && data.fedex ? Number(data.fedex) : 0;
   const totalPesos = (tarifa || 0) + adicionalRenovacion + fedex;
@@ -186,7 +243,7 @@ function calcularCaso(data) {
   const documentosCompletos = completos === requeridos.length;
   const estadoManualNormalizado = normalizarEstadoProceso(data.estadoManual);
   const estado = estadoManualNormalizado || estadoAutomaticoProceso(requeridos, data);
-  return { tarifa, adicionalRenovacion, requiereDerechos, fedex, totalPesos, requeridos, completos, documentosCompletos, estado };
+  return { tarifa, adicionalRenovacion, requiereDerechos, fedex, totalPesos, requeridos, completos, documentosCompletos, estado, derechosConsularesUsd: costos.derechosConsularesUsd };
 }
 
 function textoSolicitud(id) {
@@ -227,18 +284,19 @@ const casosIniciales = [
   },
 ];
 
-function prepararCasoGuardado(caso) {
+function prepararCasoGuardado(caso, config = configuracionBase) {
+  const configuracion = normalizarConfiguracion(config);
   const calc = calcularCaso({
     tipoClienteKey: caso.tipoClienteKey,
     tipoSolicitudKey: caso.tipoSolicitudKey,
     fedex: caso.fedex || '',
     documentosObj: caso.documentosObj || {},
     estadoManual: caso.estadoManual,
-  });
+  }, configuracion);
   return {
     ...caso,
     estadoManual: normalizarEstadoProceso(caso.estadoManual),
-    tipoCliente: tarifas[caso.tipoClienteKey]?.label || caso.tipoCliente,
+    tipoCliente: configuracion.tarifas[caso.tipoClienteKey]?.label || caso.tipoCliente,
     tipoSolicitud: textoSolicitud(caso.tipoSolicitudKey),
     total: calc.totalPesos,
     estado: calc.estado,
@@ -253,20 +311,33 @@ function App() {
   const [vista, setVista] = useState('dashboard');
   const [form, setForm] = useState(inicialFormulario);
   const [casoAbiertoId, setCasoAbiertoId] = useState(null);
+  const [config, setConfig] = useState(() => {
+    try {
+      const guardada = localStorage.getItem('sigv_configuracion_fase23');
+      return guardada ? normalizarConfiguracion(JSON.parse(guardada)) : normalizarConfiguracion(configuracionBase);
+    } catch {
+      return normalizarConfiguracion(configuracionBase);
+    }
+  });
   const [casos, setCasos] = useState(() => {
     try {
       const guardados = localStorage.getItem('sigv_casos_fase2');
-      return guardados ? JSON.parse(guardados).map(prepararCasoGuardado) : casosIniciales.map(prepararCasoGuardado);
+      return guardados ? JSON.parse(guardados).map(c => prepararCasoGuardado(c, config)) : casosIniciales.map(c => prepararCasoGuardado(c, config));
     } catch {
-      return casosIniciales.map(prepararCasoGuardado);
+      return casosIniciales.map(c => prepararCasoGuardado(c, config));
     }
   });
+
+  useEffect(() => {
+    localStorage.setItem('sigv_configuracion_fase23', JSON.stringify(config));
+    setCasos(prev => prev.map(c => prepararCasoGuardado(c, config)));
+  }, [config]);
 
   useEffect(() => {
     localStorage.setItem('sigv_casos_fase2', JSON.stringify(casos));
   }, [casos]);
 
-  const calculo = useMemo(() => calcularCaso(form), [form]);
+  const calculo = useMemo(() => calcularCaso(form, config), [form, config]);
   const casoAbierto = casos.find(c => c.id === casoAbiertoId);
 
   function validarFormulario() {
@@ -299,7 +370,7 @@ function App() {
       email: form.email.trim(),
       tipoClienteKey: form.tipoCliente,
       tipoSolicitudKey: form.tipoSolicitud,
-      tipoCliente: tarifas[form.tipoCliente].label,
+      tipoCliente: config.tarifas[form.tipoCliente].label,
       tipoSolicitud: textoSolicitud(form.tipoSolicitud),
       fedex: form.fedex,
       total: calculo.totalPesos,
@@ -333,10 +404,10 @@ function App() {
       fedex: casoActualizado.fedex || '',
       documentosObj: casoActualizado.documentosObj,
       estadoManual: casoActualizado.estadoManual,
-    });
+    }, config);
     const actualizado = {
       ...casoActualizado,
-      tipoCliente: tarifas[casoActualizado.tipoClienteKey].label,
+      tipoCliente: config.tarifas[casoActualizado.tipoClienteKey].label,
       tipoSolicitud: textoSolicitud(casoActualizado.tipoSolicitudKey),
       total: calc.totalPesos,
       estado: calc.estado,
@@ -355,7 +426,7 @@ function App() {
     : vista === 'casos' ? 'Casos registrados'
     : vista === 'detalleCaso' ? 'Detalle y seguimiento del caso'
     : vista === 'plantillas' ? 'Plantillas y respuestas rápidas'
-    : vista === 'tarifas' ? 'Tarifas'
+    : vista === 'configuracion' ? 'Configuración'
     : 'Dashboard';
 
   return <div className="app">
@@ -365,7 +436,7 @@ function App() {
       <button className={vista === 'nuevoCaso' ? 'active' : ''} onClick={() => setVista('nuevoCaso')}>Nuevo caso</button>
       <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => setVista('casos')}>Casos</button>
       <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => setVista('plantillas')}>Plantillas</button>
-      <button className={vista === 'tarifas' ? 'active' : ''} onClick={() => setVista('tarifas')}>Tarifas</button>
+      <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => setVista('configuracion')}>Configuración</button>
       <button onClick={() => setLogueado(false)}>Cerrar sesión</button>
     </aside>
 
@@ -380,15 +451,15 @@ function App() {
 
       {vista === 'dashboard' && <Dashboard casos={casos} onOpen={abrirCaso} />}
 
-      {vista === 'nuevoCaso' && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} cambiarTipoSolicitud={cambiarTipoSolicitud} />}
+      {vista === 'nuevoCaso' && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} cambiarTipoSolicitud={cambiarTipoSolicitud} config={config} />}
 
       {vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} />}
 
-      {vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => setVista('casos')} onSave={actualizarCaso} />}
+      {vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => setVista('casos')} onSave={actualizarCaso} config={config} />}
 
       {vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
 
-      {vista === 'tarifas' && <section className="panel"><Tarifas /></section>}
+      {vista === 'configuracion' && <Configuracion config={config} setConfig={setConfig} />}
     </main>
   </div>;
 }
@@ -436,11 +507,11 @@ function Dashboard({ casos, onOpen }) {
   </>;
 }
 
-function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud }) {
+function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, config }) {
   return <form className="case-layout" onSubmit={guardarCaso}>
     <section className="panel">
       <h2>1. Asesor responsable</h2>
-      <Field required label="Nombre del asesor" value={form.asesor} onChange={v => setForm({ ...form, asesor: v })} />
+      <AsesorSelect value={form.asesor} onChange={v => setForm({ ...form, asesor: v })} asesoras={config.asesoras} />
 
       <h2>2. Datos del cliente</h2>
       <div className="two-cols">
@@ -453,7 +524,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud }
       <div className="two-cols">
         <label>Tipo de cliente / paquete
           <select value={form.tipoCliente} onChange={e => setForm({ ...form, tipoCliente: e.target.value })}>
-            {Object.entries(tarifas).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
+            {Object.entries(config.tarifas).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
           </select>
         </label>
         <label>Tipo de solicitud
@@ -466,8 +537,8 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud }
       {form.tipoSolicitud === 'primeraVez' && <label>Si la visa es aprobada, devolución de pasaporte por FedEx
         <select value={form.fedex} onChange={e => setForm({ ...form, fedex: e.target.value })}>
           <option value="">No incluir todavía</option>
-          <option value="68000">Domicilio - $68.000</option>
-          <option value="56000">Recoger en FedEx Alto Prado - $56.000</option>
+          <option value={config.costos.fedexDomicilio}>Domicilio - {moneda(config.costos.fedexDomicilio)}</option>
+          <option value={config.costos.fedexAltoPrado}>Recoger en FedEx Alto Prado - {moneda(config.costos.fedexAltoPrado)}</option>
         </select>
       </label>}
 
@@ -572,10 +643,10 @@ function CaseTable({ casos, onOpen, compacto = false }) {
   </div>;
 }
 
-function DetalleCaso({ caso, onBack, onSave }) {
+function DetalleCaso({ caso, onBack, onSave, config }) {
   const [edit, setEdit] = useState({ ...caso, documentosObj: { ...caso.documentosObj } });
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
-  const calc = calcularCaso({ tipoClienteKey: edit.tipoClienteKey, tipoSolicitudKey: edit.tipoSolicitudKey, fedex: edit.fedex || '', documentosObj: edit.documentosObj, estadoManual: edit.estadoManual });
+  const calc = calcularCaso({ tipoClienteKey: edit.tipoClienteKey, tipoSolicitudKey: edit.tipoSolicitudKey, fedex: edit.fedex || '', documentosObj: edit.documentosObj, estadoManual: edit.estadoManual }, config);
 
   function cambiarSolicitudDetalle(tipoSolicitudKey) {
     const actuales = edit.documentosObj || {};
@@ -636,7 +707,7 @@ function DetalleCaso({ caso, onBack, onSave }) {
       </div>
 
       <h2>1. Asesor responsable</h2>
-      <Field required label="Nombre del asesor" value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} />
+      <AsesorSelect value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} asesoras={config.asesoras} />
 
       <h2>2. Datos del cliente</h2>
       <div className="two-cols">
@@ -649,7 +720,7 @@ function DetalleCaso({ caso, onBack, onSave }) {
       <div className="two-cols">
         <label>Tipo de cliente / paquete
           <select value={edit.tipoClienteKey} onChange={e => setEdit({ ...edit, tipoClienteKey: e.target.value })}>
-            {Object.entries(tarifas).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
+            {Object.entries(config.tarifas).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
           </select>
         </label>
         <label>Tipo de solicitud
@@ -662,8 +733,8 @@ function DetalleCaso({ caso, onBack, onSave }) {
       {edit.tipoSolicitudKey === 'primeraVez' && <label>Si la visa es aprobada, devolución de pasaporte por FedEx
         <select value={edit.fedex || ''} onChange={e => setEdit({ ...edit, fedex: e.target.value })}>
           <option value="">No incluir todavía</option>
-          <option value="68000">Domicilio - $68.000</option>
-          <option value="56000">Recoger en FedEx Alto Prado - $56.000</option>
+          <option value={config.costos.fedexDomicilio}>Domicilio - {moneda(config.costos.fedexDomicilio)}</option>
+          <option value={config.costos.fedexAltoPrado}>Recoger en FedEx Alto Prado - {moneda(config.costos.fedexAltoPrado)}</option>
         </select>
       </label>}
 
@@ -794,12 +865,24 @@ function Resumen({ calculo, fechaAsesoria, horaAsesoria }) {
     <Line label="Valor asesoría" value={moneda(calculo.tarifa)} />
     <Line label="Envío documentación Bogotá" value={moneda(calculo.adicionalRenovacion)} />
     <Line label="FedEx devolución pasaporte" value={moneda(calculo.fedex)} />
-    <Line label="Derechos consulares" value={calculo.requiereDerechos ? 'USD 185' : 'No aplica'} />
+    <Line label="Derechos consulares" value={calculo.requiereDerechos ? `USD ${calculo.derechosConsularesUsd}` : 'No aplica'} />
     <div className="total"><span>Total en pesos</span><strong>{moneda(calculo.totalPesos)}</strong></div>
     <div className={claseEstado(calculo.estado)}>{calculo.estado}</div>
     <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. El estado del proceso se actualiza según los documentos recibidos o la selección manual de la asesora.</p>
     {(fechaAsesoria || horaAsesoria) && <p className="hint"><strong>Asesoría:</strong> {fechaAsesoria || 'sin fecha'} {horaAsesoria || ''}</p>}
   </section>;
+}
+
+function AsesorSelect({ value, onChange, asesoras }) {
+  const asesorasLimpias = asesoras.map(a => String(a || '').trim()).filter(Boolean);
+  const existeSeleccion = value && asesorasLimpias.includes(value);
+  return <label>Nombre del asesor<span className="required">Obligatorio</span>
+    <select value={value} onChange={e => onChange(e.target.value)}>
+      <option value="">Seleccionar asesora</option>
+      {!existeSeleccion && value && <option value={value}>{value} · no está en configuración</option>}
+      {asesorasLimpias.map(asesora => <option key={asesora} value={asesora}>{asesora}</option>)}
+    </select>
+  </label>;
 }
 
 function Field({ label, value, onChange, required = false, type = 'text' }) {
@@ -821,19 +904,141 @@ function claseEstado(estado = '') {
   return 'pill ok';
 }
 
-function Tarifas() {
-  return <>
-    <table>
-      <thead><tr><th>Tipo cliente</th><th>Primera vez</th><th>Renovación</th><th>Actualización</th><th>Global Entry</th></tr></thead>
-      <tbody>{Object.values(tarifas).map(t => <tr key={t.label}><td>{t.label}</td><td>{moneda(t.primeraVez)}</td><td>{moneda(t.renovacion)}</td><td>{moneda(t.actualizacion)}</td><td>{moneda(t.globalEntry)}</td></tr>)}</tbody>
-    </table>
-    <div className="notes">
-      <p><strong>Gastos adicionales:</strong></p>
-      <p>Renovación: $155.000 por envío de documentación a la embajada en Bogotá.</p>
-      <p>Primera vez y Renovación: derechos consulares USD 185.</p>
-      <p>Primera vez aprobada: FedEx domicilio $68.000 o FedEx Alto Prado $56.000.</p>
-    </div>
-  </>;
+function Configuracion({ config, setConfig }) {
+  const [nuevaAsesora, setNuevaAsesora] = useState('');
+
+  function actualizarTarifa(tipoCliente, campo, valor) {
+    setConfig(prev => normalizarConfiguracion({
+      ...prev,
+      tarifas: {
+        ...prev.tarifas,
+        [tipoCliente]: {
+          ...prev.tarifas[tipoCliente],
+          [campo]: valor === '' ? null : Number(valor),
+        },
+      },
+    }));
+  }
+
+  function actualizarCosto(campo, valor) {
+    setConfig(prev => normalizarConfiguracion({
+      ...prev,
+      costos: {
+        ...prev.costos,
+        [campo]: valor === '' ? 0 : Number(valor),
+      },
+    }));
+  }
+
+  function actualizarAsesora(indice, valor) {
+    setConfig(prev => {
+      const asesoras = [...prev.asesoras];
+      asesoras[indice] = valor;
+      return { ...prev, asesoras };
+    });
+  }
+
+  function agregarAsesora() {
+    const nombre = nuevaAsesora.trim();
+    if (!nombre) return;
+    if (config.asesoras.some(a => normalizar(a) === normalizar(nombre))) {
+      alert('Esa asesora ya está registrada.');
+      return;
+    }
+    setConfig(prev => normalizarConfiguracion({ ...prev, asesoras: [...prev.asesoras, nombre] }));
+    setNuevaAsesora('');
+  }
+
+  function eliminarAsesora(indice) {
+    if (config.asesoras.length === 1) {
+      alert('Debe quedar al menos una asesora en configuración.');
+      return;
+    }
+    setConfig(prev => normalizarConfiguracion({ ...prev, asesoras: prev.asesoras.filter((_, i) => i !== indice) }));
+  }
+
+  function restaurarValoresBase() {
+    if (confirm('¿Deseas restaurar las tarifas, costos y asesoras base?')) {
+      setConfig(normalizarConfiguracion(configuracionBase));
+    }
+  }
+
+  return <div className="config-stack">
+    <section className="panel">
+      <div className="section-title">
+        <div>
+          <h2>Tarifas de asesoría</h2>
+          <p>Estos valores alimentan automáticamente el cálculo de Nuevo caso, Casos y Resumen automático.</p>
+        </div>
+        <span className="auto-save">Guardado automático</span>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Tipo cliente</th><th>Primera vez</th><th>Renovación</th><th>Actualización</th><th>Global Entry</th></tr></thead>
+          <tbody>{Object.entries(config.tarifas).map(([id, t]) => <tr key={id}>
+            <td><strong>{t.label}</strong></td>
+            <td><MoneyInput value={t.primeraVez} onChange={v => actualizarTarifa(id, 'primeraVez', v)} /></td>
+            <td><MoneyInput value={t.renovacion} onChange={v => actualizarTarifa(id, 'renovacion', v)} /></td>
+            <td><MoneyInput value={t.actualizacion} onChange={v => actualizarTarifa(id, 'actualizacion', v)} /></td>
+            <td><MoneyInput value={t.globalEntry} onChange={v => actualizarTarifa(id, 'globalEntry', v)} /></td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+      <p className="hint">Deja un campo vacío cuando esa combinación no aplique.</p>
+    </section>
+
+    <section className="panel">
+      <div className="section-title">
+        <div>
+          <h2>Costos adicionales</h2>
+          <p>Valores usados para envío de documentación, FedEx y derechos consulares.</p>
+        </div>
+      </div>
+      <div className="two-cols">
+        <label>Envío documentación Bogotá / Renovación
+          <input type="number" min="0" value={config.costos.envioDocumentacionBogota} onChange={e => actualizarCosto('envioDocumentacionBogota', e.target.value)} />
+        </label>
+        <label>Derechos consulares en USD
+          <input type="number" min="0" value={config.costos.derechosConsularesUsd} onChange={e => actualizarCosto('derechosConsularesUsd', e.target.value)} />
+        </label>
+        <label>FedEx domicilio
+          <input type="number" min="0" value={config.costos.fedexDomicilio} onChange={e => actualizarCosto('fedexDomicilio', e.target.value)} />
+        </label>
+        <label>FedEx Alto Prado
+          <input type="number" min="0" value={config.costos.fedexAltoPrado} onChange={e => actualizarCosto('fedexAltoPrado', e.target.value)} />
+        </label>
+      </div>
+    </section>
+
+    <section className="panel">
+      <div className="section-title">
+        <div>
+          <h2>Asesoras</h2>
+          <p>Este listado se conecta con el campo Asesor responsable en Nuevo caso y Casos.</p>
+        </div>
+      </div>
+      <div className="advisor-list">
+        {config.asesoras.map((asesora, indice) => <div className="advisor-row" key={`${asesora}-${indice}`}>
+          <input value={asesora} onChange={e => actualizarAsesora(indice, e.target.value)} />
+          <button type="button" className="danger" onClick={() => eliminarAsesora(indice)}>Eliminar</button>
+        </div>)}
+      </div>
+      <div className="add-row">
+        <input value={nuevaAsesora} onChange={e => setNuevaAsesora(e.target.value)} onKeyDown={e => e.key === 'Enter' && agregarAsesora()} placeholder="Nombre de nueva asesora" />
+        <button type="button" className="primary fit" onClick={agregarAsesora}>Agregar asesora</button>
+      </div>
+      <p className="hint">Si eliminas una asesora, los casos antiguos conservan su nombre, pero ya no aparecerá como opción para nuevos registros.</p>
+    </section>
+
+    <section className="panel actions-row">
+      <button type="button" className="secondary fit" onClick={restaurarValoresBase}>Restaurar configuración base</button>
+      <span className="hint">La configuración se guarda en el navegador durante esta fase local.</span>
+    </section>
+  </div>;
+}
+
+function MoneyInput({ value, onChange }) {
+  return <input className="money-input" type="number" min="0" value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder="No aplica" />;
 }
 
 createRoot(document.getElementById('root')).render(<App />);
