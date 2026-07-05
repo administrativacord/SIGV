@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const APP_VERSION = 'Fase 2.6 Web · Configuración manual y copia facturación';
+const APP_VERSION = 'Fase 2.8 Web · Casos con múltiples integrantes';
 
 const tarifasBase = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -38,6 +38,94 @@ function crearFacturacion(tipoTramite = 'primeraVez') {
     medioPago: '',
     valor: 0,
   };
+}
+
+function crearIdIntegrante() {
+  return `integrante-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function crearIntegrante(numero = 1, base = {}) {
+  const tipoCliente = base.tipoClienteKey || base.tipoCliente || 'afiliado';
+  const tipoSolicitud = base.tipoSolicitudKey || base.tipoSolicitud || 'primeraVez';
+  const documentosBase = base.documentosObj || base.documentos || {};
+  const documentos = Object.fromEntries(documentosRequeridos(tipoSolicitud).map(id => [id, !!documentosBase[id]]));
+  return {
+    id: base.id || crearIdIntegrante(),
+    nombre: base.nombre || '',
+    telefono: base.telefono || '',
+    email: base.email || '',
+    tipoCliente,
+    tipoSolicitud,
+    tipoClienteKey: tipoCliente,
+    tipoSolicitudKey: tipoSolicitud,
+    fedex: base.fedex || '',
+    documentos,
+    documentosObj: documentos,
+  };
+}
+
+function normalizarIntegrantes(data = {}) {
+  const listaBase = Array.isArray(data.integrantes) && data.integrantes.length
+    ? data.integrantes
+    : [{
+        id: data.integranteId,
+        nombre: data.nombre,
+        telefono: data.telefono,
+        email: data.email,
+        tipoCliente: data.tipoClienteKey || data.tipoCliente,
+        tipoSolicitud: data.tipoSolicitudKey || data.tipoSolicitud,
+        fedex: data.fedex,
+        documentos: data.documentosObj || data.documentos,
+      }];
+
+  const normalizados = listaBase.map((integrante, indice) => crearIntegrante(indice + 1, integrante));
+  return normalizados.length ? normalizados : [crearIntegrante(1)];
+}
+
+function serializarIntegrante(integrante, indice = 0) {
+  const normalizado = crearIntegrante(indice + 1, integrante);
+  return {
+    id: normalizado.id,
+    nombre: normalizado.nombre,
+    telefono: normalizado.telefono,
+    email: normalizado.email,
+    tipoCliente: normalizado.tipoCliente,
+    tipoSolicitud: normalizado.tipoSolicitud,
+    fedex: normalizado.fedex,
+    documentos: { ...normalizado.documentos },
+  };
+}
+
+function primerIntegrante(data = {}) {
+  return normalizarIntegrantes(data)[0] || crearIntegrante(1);
+}
+
+function ajustarCantidadIntegrantes(listaActual = [], cantidad = 1) {
+  const cantidadNormalizada = Math.max(1, Math.min(30, Number(cantidad) || 1));
+  const actuales = normalizarIntegrantes({ integrantes: listaActual });
+  const nuevos = [...actuales];
+  while (nuevos.length < cantidadNormalizada) nuevos.push(crearIntegrante(nuevos.length + 1));
+  return nuevos.slice(0, cantidadNormalizada).map((integrante, indice) => crearIntegrante(indice + 1, integrante));
+}
+
+function textoClienteCaso(caso = {}) {
+  const integrantes = normalizarIntegrantes(caso);
+  const principal = integrantes[0];
+  if (integrantes.length <= 1) return principal.nombre || caso.nombre || 'Sin nombre';
+  return `${principal.nombre || 'Grupo familiar'} + ${integrantes.length - 1} integrante${integrantes.length - 1 === 1 ? '' : 's'}`;
+}
+
+function textoSolicitudesCaso(caso = {}) {
+  const tipos = [...new Set(normalizarIntegrantes(caso).map(i => i.tipoSolicitud))];
+  if (tipos.length <= 1) return textoSolicitud(tipos[0] || caso.tipoSolicitudKey || caso.tipoSolicitud || 'primeraVez');
+  return 'Varios trámites';
+}
+
+function textoClientesCaso(caso = {}, config = configuracionBase) {
+  const configuracion = normalizarConfiguracion(config);
+  const tipos = [...new Set(normalizarIntegrantes(caso).map(i => i.tipoCliente))];
+  if (tipos.length <= 1) return configuracion.tarifas[tipos[0]]?.label || caso.tipoCliente || '';
+  return 'Varios tipos de cliente';
 }
 
 const tiposSolicitud = [
@@ -180,15 +268,11 @@ function normalizarConfiguracion(config = {}) {
 }
 
 function inicialFormulario() {
+  const integrantes = [crearIntegrante(1)];
   return {
     asesor: '',
-    nombre: '',
-    telefono: '',
-    email: '',
-    tipoCliente: 'afiliado',
-    tipoSolicitud: 'primeraVez',
-    fedex: '',
-    documentos: crearDocumentos('primeraVez'),
+    cantidad: 1,
+    integrantes,
     observacion: '',
     seguimiento: '',
     fechaAsesoria: '',
@@ -229,37 +313,81 @@ function normalizarEstadoProceso(estado = '') {
   return equivalencias[limpio] || '';
 }
 
-function estadoAutomaticoProceso(requeridos, data) {
-  const docs = data.documentos || data.documentosObj || {};
-  const completos = requeridos.filter(id => docs[id]).length;
-  const documentosCompletos = completos === requeridos.length;
-  const faltantes = requeridos.filter(id => !docs[id]);
+function estadoAutomaticoProceso(requeridos, data = {}) {
+  const detalles = data.detalleIntegrantes || normalizarIntegrantes(data).map((integrante, indice) => {
+    const tipoSolicitud = integrante.tipoSolicitudKey || integrante.tipoSolicitud;
+    const requeridosIntegrante = documentosRequeridos(tipoSolicitud);
+    const docs = integrante.documentosObj || integrante.documentos || {};
+    const faltantes = requeridosIntegrante.filter(id => !docs[id]).map(id => ({ id, integrante: indice + 1 }));
+    return { requeridos: requeridosIntegrante, faltantes };
+  });
 
-  if (documentosCompletos) return 'Pendiente Agendamiento de Asesoría';
-  if (faltantes.length === 1 && faltantes[0] === 'pagoAsesoria') return 'Pendiente de pago Asesoría';
+  const totalRequeridos = detalles.reduce((acc, detalle) => acc + detalle.requeridos.length, 0);
+  const faltantes = detalles.flatMap(detalle => detalle.faltantes || []);
+
+  if (totalRequeridos > 0 && faltantes.length === 0) return 'Pendiente Agendamiento de Asesoría';
+  if (faltantes.length > 0 && faltantes.every(item => item.id === 'pagoAsesoria')) return 'Pendiente de pago Asesoría';
   return 'Pendiente Documentación';
+}
+
+function calcularIntegrante(integrante, config = configuracionBase, indice = 0) {
+  const configuracion = normalizarConfiguracion(config);
+  const tipoCliente = integrante.tipoClienteKey || integrante.tipoCliente || 'afiliado';
+  const tipoSolicitud = integrante.tipoSolicitudKey || integrante.tipoSolicitud || 'primeraVez';
+  const tarifa = configuracion.tarifas[tipoCliente]?.[tipoSolicitud];
+  const requeridos = documentosRequeridos(tipoSolicitud);
+  const docs = integrante.documentosObj || integrante.documentos || {};
+  const completos = requeridos.filter(id => docs[id]).length;
+  const faltantes = requeridos.filter(id => !docs[id]).map(id => ({ id, integrante: indice + 1, nombre: integrante.nombre || `Integrante ${indice + 1}` }));
+  const fedex = tipoSolicitud === 'primeraVez' && integrante.fedex ? Number(integrante.fedex) : 0;
+  const valorInformativoEnvioBogota = tipoSolicitud === 'renovacion' ? configuracion.costos.envioDocumentacionBogota : 0;
+  const requiereDerechos = tipoSolicitud === 'primeraVez' || tipoSolicitud === 'renovacion';
+  return {
+    ...integrante,
+    numero: indice + 1,
+    tipoCliente,
+    tipoSolicitud,
+    tipoClienteKey: tipoCliente,
+    tipoSolicitudKey: tipoSolicitud,
+    tarifa,
+    requeridos,
+    completos,
+    faltantes,
+    documentosCompletos: completos === requeridos.length,
+    fedex,
+    valorInformativoEnvioBogota,
+    requiereDerechos,
+  };
 }
 
 function calcularCaso(data, config = configuracionBase) {
   const configuracion = normalizarConfiguracion(config);
-  const tarifas = configuracion.tarifas;
-  const costos = configuracion.costos;
-  const tipoCliente = data.tipoCliente || data.tipoClienteKey;
-  const tipoSolicitud = data.tipoSolicitud || data.tipoSolicitudKey;
-  const tarifa = tarifas[tipoCliente]?.[tipoSolicitud];
-  const valorInformativoEnvioBogota = tipoSolicitud === 'renovacion' ? costos.envioDocumentacionBogota : 0;
-  const requiereDerechos = tipoSolicitud === 'primeraVez' || tipoSolicitud === 'renovacion';
-  const fedex = tipoSolicitud === 'primeraVez' && data.fedex ? Number(data.fedex) : 0;
-  // Solo la tarifa de asesoría corresponde a facturación/ingreso de AmCham.
-  // Los valores de envío, FedEx y derechos consulares son informativos para el presupuesto del cliente.
-  const totalPesos = tarifa || 0;
-  const requeridos = documentosRequeridos(tipoSolicitud);
-  const docs = data.documentos || data.documentosObj || {};
-  const completos = requeridos.filter(id => docs[id]).length;
-  const documentosCompletos = completos === requeridos.length;
+  const integrantes = normalizarIntegrantes(data);
+  const detalleIntegrantes = integrantes.map((integrante, indice) => calcularIntegrante(integrante, configuracion, indice));
+  const totalPesos = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.tarifa) || 0), 0);
+  const valorInformativoEnvioBogota = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.valorInformativoEnvioBogota) || 0), 0);
+  const fedex = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.fedex) || 0), 0);
+  const requiereDerechos = detalleIntegrantes.some(detalle => detalle.requiereDerechos);
+  const requeridos = detalleIntegrantes.flatMap(detalle => detalle.requeridos.map(id => `${detalle.numero}-${id}`));
+  const completos = detalleIntegrantes.reduce((acc, detalle) => acc + detalle.completos, 0);
+  const documentosCompletos = requeridos.length > 0 && completos === requeridos.length;
   const estadoManualNormalizado = normalizarEstadoProceso(data.estadoManual);
-  const estado = estadoManualNormalizado || estadoAutomaticoProceso(requeridos, data);
-  return { tarifa, valorInformativoEnvioBogota, adicionalRenovacion: valorInformativoEnvioBogota, requiereDerechos, fedex, totalPesos, requeridos, completos, documentosCompletos, estado, derechosConsularesUsd: costos.derechosConsularesUsd };
+  const estado = estadoManualNormalizado || estadoAutomaticoProceso(requeridos, { detalleIntegrantes });
+  return {
+    tarifa: totalPesos,
+    valorInformativoEnvioBogota,
+    adicionalRenovacion: valorInformativoEnvioBogota,
+    requiereDerechos,
+    fedex,
+    totalPesos,
+    requeridos,
+    completos,
+    documentosCompletos,
+    estado,
+    derechosConsularesUsd: configuracion.costos.derechosConsularesUsd,
+    detalleIntegrantes,
+    cantidad: detalleIntegrantes.length,
+  };
 }
 
 function calcularValorFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', config = configuracionBase) {
@@ -269,9 +397,12 @@ function calcularValorFacturacion(facturacion = {}, tipoClienteKey = 'afiliado',
   return valor === null || valor === undefined ? null : Number(valor);
 }
 
-function normalizarFacturacion(facturacion = {}, data = {}, config = configuracionBase) {
+function normalizarFacturacion(facturacion = {}, data = {}, config = configuracionBase, valorOverride = null) {
   const tipoTramite = facturacion.tipoTramite || data.tipoSolicitudKey || data.tipoSolicitud || 'primeraVez';
   const tipoClienteKey = data.tipoClienteKey || data.tipoCliente || 'afiliado';
+  const valorCalculado = valorOverride !== null && valorOverride !== undefined
+    ? Number(valorOverride)
+    : calcularValorFacturacion({ tipoTramite }, tipoClienteKey, config);
   return {
     nombre: facturacion.nombre || '',
     cedulaNit: facturacion.cedulaNit || '',
@@ -280,14 +411,14 @@ function normalizarFacturacion(facturacion = {}, data = {}, config = configuraci
     correo: facturacion.correo || '',
     tipoTramite,
     medioPago: facturacion.medioPago || '',
-    valor: calcularValorFacturacion({ tipoTramite }, tipoClienteKey, config) || 0,
+    valor: valorCalculado || 0,
   };
 }
 
-function generarTextoFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', tipoSolicitudKey = 'primeraVez', config = configuracionBase) {
-  const datos = normalizarFacturacion(facturacion, { tipoClienteKey, tipoSolicitudKey }, config);
-  const valor = calcularValorFacturacion(datos, tipoClienteKey, config);
-  return [
+function generarTextoFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', tipoSolicitudKey = 'primeraVez', config = configuracionBase, valorOverride = null, cantidadIntegrantes = 1) {
+  const datos = normalizarFacturacion(facturacion, { tipoClienteKey, tipoSolicitudKey }, config, valorOverride);
+  const valor = valorOverride !== null && valorOverride !== undefined ? Number(valorOverride) : calcularValorFacturacion(datos, tipoClienteKey, config);
+  const lineas = [
     'DATOS DE FACTURACIÓN',
     `Nombre: ${datos.nombre || 'Pendiente'}`,
     `Cédula o NIT: ${datos.cedulaNit || 'Pendiente'}`,
@@ -297,7 +428,9 @@ function generarTextoFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', 
     `Tipo de trámite: ${textoSolicitud(datos.tipoTramite)}`,
     `Medio de pago: ${datos.medioPago || 'Pendiente'}`,
     `Valor: ${valor === null || valor === undefined ? 'No aplica' : moneda(valor)}`,
-  ].join('\n');
+  ];
+  if (Number(cantidadIntegrantes) > 1) lineas.splice(1, 0, `Cantidad de integrantes: ${cantidadIntegrantes}`);
+  return lineas.join('\n');
 }
 
 function textoSolicitud(id) {
@@ -340,22 +473,31 @@ const casosIniciales = [
 
 function prepararCasoGuardado(caso, config = configuracionBase) {
   const configuracion = normalizarConfiguracion(config);
+  const integrantes = normalizarIntegrantes(caso);
   const calc = calcularCaso({
-    tipoClienteKey: caso.tipoClienteKey,
-    tipoSolicitudKey: caso.tipoSolicitudKey,
-    fedex: caso.fedex || '',
-    documentosObj: caso.documentosObj || {},
+    integrantes,
     estadoManual: caso.estadoManual,
   }, configuracion);
+  const principal = integrantes[0] || crearIntegrante(1);
   return {
     ...caso,
+    cantidad: integrantes.length,
+    integrantes: integrantes.map(serializarIntegrante),
+    asesor: caso.asesor || '',
+    nombre: principal.nombre,
+    telefono: principal.telefono,
+    email: principal.email,
+    tipoClienteKey: principal.tipoCliente,
+    tipoSolicitudKey: principal.tipoSolicitud,
+    tipoCliente: configuracion.tarifas[principal.tipoCliente]?.label || caso.tipoCliente,
+    tipoSolicitud: textoSolicitud(principal.tipoSolicitud),
+    fedex: principal.fedex || '',
+    documentosObj: { ...principal.documentos },
     estadoManual: normalizarEstadoProceso(caso.estadoManual),
-    tipoCliente: configuracion.tarifas[caso.tipoClienteKey]?.label || caso.tipoCliente,
-    tipoSolicitud: textoSolicitud(caso.tipoSolicitudKey),
     total: calc.totalPesos,
     estado: calc.estado,
     documentos: `${calc.completos}/${calc.requeridos.length}`,
-    facturacion: normalizarFacturacion(caso.facturacion, { ...caso, tipoClienteKey: caso.tipoClienteKey, tipoSolicitudKey: caso.tipoSolicitudKey }, configuracion),
+    facturacion: normalizarFacturacion(caso.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, configuracion, calc.totalPesos),
     fechaCitaEmbajada: caso.fechaCitaEmbajada || '',
   };
 }
@@ -398,24 +540,17 @@ function App() {
 
   function validarFormulario() {
     if (!form.asesor.trim()) return 'Debes ingresar el nombre del asesor.';
-    if (!form.nombre.trim()) return 'Debes ingresar el nombre completo del cliente.';
-    if (!form.telefono.trim()) return 'Debes ingresar el teléfono del cliente.';
-    if (!form.email.trim()) return 'Debes ingresar el email del cliente.';
-    if (calculo.tarifa === null || calculo.tarifa === undefined) return 'La combinación seleccionada no aplica. Cambia el tipo de cliente o solicitud.';
+    const integrantes = normalizarIntegrantes(form);
+    if (!integrantes.length) return 'Debes registrar al menos un integrante.';
+    for (const [indice, integrante] of integrantes.entries()) {
+      const numero = indice + 1;
+      if (!integrante.nombre.trim()) return `Debes ingresar el nombre completo del integrante ${numero}.`;
+      if (!integrante.telefono.trim()) return `Debes ingresar el teléfono del integrante ${numero}.`;
+      if (!integrante.email.trim()) return `Debes ingresar el email del integrante ${numero}.`;
+      const tarifa = config.tarifas[integrante.tipoCliente]?.[integrante.tipoSolicitud];
+      if (tarifa === null || tarifa === undefined) return `La combinación seleccionada para el integrante ${numero} no aplica. Cambia el tipo de cliente o solicitud.`;
+    }
     return '';
-  }
-
-  function cambiarTipoSolicitud(tipoSolicitud) {
-    const documentosActuales = form.documentos || {};
-    const nuevosDocs = Object.fromEntries(documentosRequeridos(tipoSolicitud).map(id => [id, !!documentosActuales[id]]));
-    setForm({
-      ...form,
-      tipoSolicitud,
-      fedex: '',
-      documentos: nuevosDocs,
-      facturacion: { ...(form.facturacion || crearFacturacion(tipoSolicitud)), tipoTramite: tipoSolicitud },
-      estadoManual: '',
-    });
   }
 
   function guardarCaso(e) {
@@ -425,30 +560,34 @@ function App() {
       alert(error);
       return;
     }
+    const integrantes = normalizarIntegrantes(form);
+    const principal = integrantes[0];
     const nuevo = {
       id: generarId(casos),
       asesor: form.asesor.trim(),
-      nombre: form.nombre.trim(),
-      telefono: form.telefono.trim(),
-      email: form.email.trim(),
-      tipoClienteKey: form.tipoCliente,
-      tipoSolicitudKey: form.tipoSolicitud,
-      tipoCliente: config.tarifas[form.tipoCliente].label,
-      tipoSolicitud: textoSolicitud(form.tipoSolicitud),
-      fedex: form.fedex,
+      cantidad: integrantes.length,
+      integrantes: integrantes.map(serializarIntegrante),
+      nombre: principal.nombre.trim(),
+      telefono: principal.telefono.trim(),
+      email: principal.email.trim(),
+      tipoClienteKey: principal.tipoCliente,
+      tipoSolicitudKey: principal.tipoSolicitud,
+      tipoCliente: config.tarifas[principal.tipoCliente].label,
+      tipoSolicitud: textoSolicitud(principal.tipoSolicitud),
+      fedex: principal.fedex,
       total: calculo.totalPesos,
       estado: calculo.estado,
       documentos: `${calculo.completos}/${calculo.requeridos.length}`,
-      documentosObj: { ...form.documentos },
+      documentosObj: { ...principal.documentos },
       observacion: form.observacion,
       seguimiento: form.seguimiento || 'Caso creado. Pendiente seguimiento.',
       fechaAsesoria: form.fechaAsesoria,
       horaAsesoria: form.horaAsesoria,
-      facturacion: normalizarFacturacion(form.facturacion, { tipoClienteKey: form.tipoCliente, tipoSolicitudKey: form.tipoSolicitud }, config),
+      facturacion: normalizarFacturacion(form.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calculo.totalPesos),
       fechaCitaEmbajada: form.fechaCitaEmbajada,
       estadoManual: form.estadoManual,
       historial: [
-        evento('Creación', `Caso creado por ${form.asesor.trim()}. Documentos recibidos: ${calculo.completos}/${calculo.requeridos.length}.`, form.asesor.trim()),
+        evento('Creación', `Caso creado por ${form.asesor.trim()}. Integrantes: ${integrantes.length}. Documentos recibidos: ${calculo.completos}/${calculo.requeridos.length}.`, form.asesor.trim()),
       ],
     };
     setCasos(prev => [nuevo, ...prev]);
@@ -463,27 +602,36 @@ function App() {
   }
 
   function actualizarCaso(casoActualizado, motivo = 'Caso actualizado desde detalle.') {
+    const integrantes = normalizarIntegrantes(casoActualizado);
+    const principal = integrantes[0] || crearIntegrante(1);
     const calc = calcularCaso({
-      tipoClienteKey: casoActualizado.tipoClienteKey,
-      tipoSolicitudKey: casoActualizado.tipoSolicitudKey,
-      fedex: casoActualizado.fedex || '',
-      documentosObj: casoActualizado.documentosObj,
+      integrantes,
       estadoManual: casoActualizado.estadoManual,
     }, config);
     const actualizado = {
       ...casoActualizado,
-      tipoCliente: config.tarifas[casoActualizado.tipoClienteKey].label,
-      tipoSolicitud: textoSolicitud(casoActualizado.tipoSolicitudKey),
+      cantidad: integrantes.length,
+      integrantes: integrantes.map(serializarIntegrante),
+      nombre: principal.nombre,
+      telefono: principal.telefono,
+      email: principal.email,
+      tipoClienteKey: principal.tipoCliente,
+      tipoSolicitudKey: principal.tipoSolicitud,
+      tipoCliente: config.tarifas[principal.tipoCliente]?.label || casoActualizado.tipoCliente,
+      tipoSolicitud: textoSolicitud(principal.tipoSolicitud),
+      fedex: principal.fedex || '',
+      documentosObj: { ...principal.documentos },
       total: calc.totalPesos,
       estado: calc.estado,
       documentos: `${calc.completos}/${calc.requeridos.length}`,
-      facturacion: normalizarFacturacion(casoActualizado.facturacion, { tipoClienteKey: casoActualizado.tipoClienteKey, tipoSolicitudKey: casoActualizado.tipoSolicitudKey }, config),
+      facturacion: normalizarFacturacion(casoActualizado.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calc.totalPesos),
       fechaCitaEmbajada: casoActualizado.fechaCitaEmbajada || '',
       historial: [...(casoActualizado.historial || []), evento('Actualización', motivo, casoActualizado.asesor || 'Sistema')],
     };
     setCasos(prev => prev.map(c => c.id === actualizado.id ? actualizado : c));
     setCasoAbiertoId(actualizado.id);
   }
+
 
   if (!logueado) {
     return <Login usuario={usuario} clave={clave} setUsuario={setUsuario} setClave={setClave} onLogin={() => usuario === 'admin' && clave === '1234' ? setLogueado(true) : alert('Usuario o clave incorrectos')} />;
@@ -518,7 +666,7 @@ function App() {
 
       {vista === 'dashboard' && <Dashboard casos={casos} onOpen={abrirCaso} />}
 
-      {vista === 'nuevoCaso' && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} cambiarTipoSolicitud={cambiarTipoSolicitud} config={config} />}
+      {vista === 'nuevoCaso' && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} config={config} />}
 
       {vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} />}
 
@@ -574,45 +722,34 @@ function Dashboard({ casos, onOpen }) {
   </>;
 }
 
-function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, config }) {
+function NuevoCaso({ form, setForm, calculo, guardarCaso, config }) {
+  const integrantes = normalizarIntegrantes(form);
+  const principal = integrantes[0] || crearIntegrante(1);
+
+  function cambiarCantidad(valor) {
+    const nuevaCantidad = Math.max(1, Math.min(30, Number(valor) || 1));
+    const nuevosIntegrantes = ajustarCantidadIntegrantes(integrantes, nuevaCantidad);
+    setForm({ ...form, cantidad: nuevaCantidad, integrantes: nuevosIntegrantes });
+  }
+
+  function actualizarIntegrantes(nuevosIntegrantes) {
+    setForm({ ...form, cantidad: nuevosIntegrantes.length, integrantes: nuevosIntegrantes, estadoManual: '' });
+  }
+
   return <form className="case-layout" onSubmit={guardarCaso}>
     <section className="panel">
       <h2>1. Asesor responsable</h2>
       <AsesorSelect value={form.asesor} onChange={v => setForm({ ...form, asesor: v })} asesoras={config.asesoras} />
 
-      <h2>2. Datos del cliente</h2>
-      <div className="two-cols">
-        <Field required label="Nombre completo" value={form.nombre} onChange={v => setForm({ ...form, nombre: v })} />
-        <Field required label="Teléfono" value={form.telefono} onChange={v => setForm({ ...form, telefono: v })} />
-      </div>
-      <Field required label="Email" type="email" value={form.email} onChange={v => setForm({ ...form, email: v })} />
+      <h2>2. Cantidad</h2>
+      <label>Cantidad de integrantes del caso
+        <input type="number" min="1" max="30" value={integrantes.length} onChange={e => cambiarCantidad(e.target.value)} />
+      </label>
+      <p className="hint">Usa este campo cuando el caso sea de un grupo familiar o tenga varios solicitantes. Según la cantidad, se despliegan datos, solicitud y documentos para cada integrante.</p>
 
-      <h2>3. Tipo de solicitud</h2>
-      <div className="two-cols">
-        <label>Tipo de cliente / paquete
-          <select value={form.tipoCliente} onChange={e => setForm({ ...form, tipoCliente: e.target.value })}>
-            {Object.entries(config.tarifas).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
-          </select>
-        </label>
-        <label>Tipo de solicitud
-          <select value={form.tipoSolicitud} onChange={e => cambiarTipoSolicitud(e.target.value)}>
-            {tiposSolicitud.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-        </label>
-      </div>
+      <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
 
-      {form.tipoSolicitud === 'primeraVez' && <label>Valor informativo FedEx si la visa es aprobada
-        <select value={form.fedex} onChange={e => setForm({ ...form, fedex: e.target.value })}>
-          <option value="">No aplica / pendiente por definir</option>
-          <option value={config.costos.fedexDomicilio}>Domicilio - {moneda(config.costos.fedexDomicilio)}</option>
-          <option value={config.costos.fedexAltoPrado}>Recoger en FedEx Alto Prado - {moneda(config.costos.fedexAltoPrado)}</option>
-        </select>
-      </label>}
-
-      <h2>4. Documentos recibidos</h2>
-      <Checklist tipoSolicitud={form.tipoSolicitud} documentos={form.documentos} onChange={(id, checked) => setForm({ ...form, documentos: { ...form.documentos, [id]: checked } })} />
-
-      <h2>5. Asesoría</h2>
+      <h2>6. Asesoría</h2>
       <div className="two-cols">
         <label>Fecha tentativa de asesoría
           <input type="date" value={form.fechaAsesoria} onChange={e => setForm({ ...form, fechaAsesoria: e.target.value })} />
@@ -622,17 +759,19 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, 
         </label>
       </div>
 
-      <h2>6. Facturación</h2>
+      <h2>7. Facturación</h2>
       <FacturacionFields
         data={form.facturacion}
         onChange={facturacion => setForm({ ...form, facturacion })}
-        tipoClienteKey={form.tipoCliente}
-        tipoSolicitudKey={form.tipoSolicitud}
-        datosCliente={{ nombre: form.nombre, telefono: form.telefono, correo: form.email }}
+        tipoClienteKey={principal.tipoCliente}
+        tipoSolicitudKey={principal.tipoSolicitud}
+        datosCliente={{ nombre: principal.nombre, telefono: principal.telefono, correo: principal.email }}
         config={config}
+        valorCaso={calculo.totalPesos}
+        cantidadIntegrantes={integrantes.length}
       />
 
-      <h2>7. Fecha Cita embajada</h2>
+      <h2>8. Fecha Cita embajada</h2>
       <label>Fecha Cita embajada
         <input type="date" value={form.fechaCitaEmbajada} onChange={e => setForm({ ...form, fechaCitaEmbajada: e.target.value })} />
       </label>
@@ -654,8 +793,72 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, 
       <button className="primary" type="submit">Guardar caso</button>
     </section>
 
-    <Resumen calculo={calculo} facturacion={form.facturacion} tipoClienteKey={form.tipoCliente} config={config} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} />
+    <Resumen calculo={calculo} facturacion={form.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} />
   </form>;
+}
+
+function IntegrantesSecciones({ integrantes, onChange, config }) {
+  const lista = normalizarIntegrantes({ integrantes });
+
+  function actualizarIntegrante(indice, cambios) {
+    const nuevos = lista.map((integrante, i) => i === indice ? crearIntegrante(i + 1, { ...integrante, ...cambios }) : integrante);
+    onChange(nuevos);
+  }
+
+  function cambiarSolicitud(indice, tipoSolicitud) {
+    const integrante = lista[indice];
+    const documentosActuales = integrante.documentos || {};
+    const nuevosDocs = Object.fromEntries(documentosRequeridos(tipoSolicitud).map(id => [id, !!documentosActuales[id]]));
+    actualizarIntegrante(indice, { tipoSolicitud, tipoSolicitudKey: tipoSolicitud, fedex: '', documentos: nuevosDocs, documentosObj: nuevosDocs });
+  }
+
+  return <>
+    <h2>3. Datos del cliente</h2>
+    <div className="integrantes-stack">
+      {lista.map((integrante, indice) => <div className="integrante-card" key={integrante.id}>
+        <div className="integrante-title">Integrante {indice + 1}</div>
+        <div className="two-cols">
+          <Field required label="Nombre completo" value={integrante.nombre} onChange={v => actualizarIntegrante(indice, { nombre: v })} />
+          <Field required label="Teléfono" value={integrante.telefono} onChange={v => actualizarIntegrante(indice, { telefono: v })} />
+        </div>
+        <Field required label="Email" type="email" value={integrante.email} onChange={v => actualizarIntegrante(indice, { email: v })} />
+      </div>)}
+    </div>
+
+    <h2>4. Tipo de solicitud</h2>
+    <div className="integrantes-stack">
+      {lista.map((integrante, indice) => <div className="integrante-card" key={`${integrante.id}-solicitud`}>
+        <div className="integrante-title">Integrante {indice + 1} · {integrante.nombre || 'Sin nombre'}</div>
+        <div className="two-cols">
+          <label>Tipo de cliente / paquete
+            <select value={integrante.tipoCliente} onChange={e => actualizarIntegrante(indice, { tipoCliente: e.target.value, tipoClienteKey: e.target.value })}>
+              {Object.entries(config.tarifas).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
+            </select>
+          </label>
+          <label>Tipo de solicitud
+            <select value={integrante.tipoSolicitud} onChange={e => cambiarSolicitud(indice, e.target.value)}>
+              {tiposSolicitud.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </label>
+        </div>
+        {integrante.tipoSolicitud === 'primeraVez' && <label>Valor informativo FedEx si la visa es aprobada
+          <select value={integrante.fedex || ''} onChange={e => actualizarIntegrante(indice, { fedex: e.target.value })}>
+            <option value="">No aplica / pendiente por definir</option>
+            <option value={config.costos.fedexDomicilio}>Domicilio - {moneda(config.costos.fedexDomicilio)}</option>
+            <option value={config.costos.fedexAltoPrado}>Recoger en FedEx Alto Prado - {moneda(config.costos.fedexAltoPrado)}</option>
+          </select>
+        </label>}
+      </div>)}
+    </div>
+
+    <h2>5. Documentos recibidos</h2>
+    <div className="integrantes-stack">
+      {lista.map((integrante, indice) => <div className="integrante-card" key={`${integrante.id}-docs`}>
+        <div className="integrante-title">Integrante {indice + 1} · {integrante.nombre || textoSolicitud(integrante.tipoSolicitud)}</div>
+        <Checklist tipoSolicitud={integrante.tipoSolicitud} documentos={integrante.documentos} onChange={(id, checked) => actualizarIntegrante(indice, { documentos: { ...integrante.documentos, [id]: checked }, documentosObj: { ...integrante.documentos, [id]: checked } })} />
+      </div>)}
+    </div>
+  </>;
 }
 
 function Casos({ casos, onOpen }) {
@@ -666,9 +869,9 @@ function Casos({ casos, onOpen }) {
   const filtrados = useMemo(() => {
     const q = normalizar(busqueda);
     return casos.filter(c => {
-      const coincideTexto = !q || normalizar(`${c.id} ${c.asesor} ${c.nombre} ${c.telefono} ${c.email}`).includes(q);
+      const coincideTexto = !q || normalizar(`${c.id} ${c.asesor} ${c.nombre} ${c.telefono} ${c.email} ${normalizarIntegrantes(c).map(i => `${i.nombre} ${i.telefono} ${i.email}`).join(' ')}`).includes(q);
       const coincideEstado = estado === 'todos' || normalizar(c.estado).includes(normalizar(estado));
-      const coincideSolicitud = solicitud === 'todos' || c.tipoSolicitudKey === solicitud;
+      const coincideSolicitud = solicitud === 'todos' || normalizarIntegrantes(c).some(i => i.tipoSolicitud === solicitud);
       return coincideTexto && coincideEstado && coincideSolicitud;
     });
   }, [busqueda, estado, solicitud, casos]);
@@ -716,9 +919,9 @@ function CaseTable({ casos, onOpen, compacto = false }) {
       <tbody>{casos.map(c => <tr key={c.id}>
         <td><strong>{c.id}</strong></td>
         <td>{c.asesor}</td>
-        <td>{c.nombre}<br /><small>{c.email}</small></td>
+        <td>{textoClienteCaso(c)}<br /><small>{normalizarIntegrantes(c).length} integrante{normalizarIntegrantes(c).length === 1 ? '' : 's'} · {c.email}</small></td>
         {!compacto && <td>{c.telefono}</td>}
-        <td>{c.tipoSolicitud}<br /><small>{c.tipoCliente}</small></td>
+        <td>{textoSolicitudesCaso(c)}<br /><small>{textoClientesCaso(c)}</small></td>
         <td>{c.documentos}</td>
         <td>{moneda(c.total)}</td>
         <td><span className={claseEstado(c.estado)}>{c.estado}</span></td>
@@ -729,32 +932,40 @@ function CaseTable({ casos, onOpen, compacto = false }) {
 }
 
 function DetalleCaso({ caso, onBack, onSave, config }) {
-  const [edit, setEdit] = useState({ ...caso, documentosObj: { ...caso.documentosObj } });
+  const [edit, setEdit] = useState(() => ({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) }));
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
-  const calc = calcularCaso({ tipoClienteKey: edit.tipoClienteKey, tipoSolicitudKey: edit.tipoSolicitudKey, fedex: edit.fedex || '', documentosObj: edit.documentosObj, estadoManual: edit.estadoManual }, config);
+  const integrantes = normalizarIntegrantes(edit);
+  const principal = integrantes[0] || crearIntegrante(1);
+  const calc = calcularCaso({ integrantes, estadoManual: edit.estadoManual }, config);
 
-  function cambiarSolicitudDetalle(tipoSolicitudKey) {
-    const actuales = edit.documentosObj || {};
-    const nuevosDocs = Object.fromEntries(documentosRequeridos(tipoSolicitudKey).map(id => [id, !!actuales[id]]));
-    setEdit({
-      ...edit,
-      tipoSolicitudKey,
-      documentosObj: nuevosDocs,
-      facturacion: { ...(edit.facturacion || crearFacturacion(tipoSolicitudKey)), tipoTramite: tipoSolicitudKey },
-      estadoManual: '',
-    });
+  function cambiarCantidad(valor) {
+    const nuevaCantidad = Math.max(1, Math.min(30, Number(valor) || 1));
+    const nuevosIntegrantes = ajustarCantidadIntegrantes(integrantes, nuevaCantidad);
+    setEdit({ ...edit, cantidad: nuevaCantidad, integrantes: nuevosIntegrantes, estadoManual: '' });
+  }
+
+  function actualizarIntegrantes(nuevosIntegrantes) {
+    setEdit({ ...edit, cantidad: nuevosIntegrantes.length, integrantes: nuevosIntegrantes, estadoManual: '' });
   }
 
   function guardar(motivo = 'Caso actualizado desde detalle.') {
-    if (!edit.asesor.trim() || !edit.nombre.trim() || !edit.telefono.trim() || !edit.email.trim()) {
-      alert('Asesor, nombre, teléfono y email son obligatorios.');
+    if (!edit.asesor.trim()) {
+      alert('El asesor responsable es obligatorio.');
       return;
     }
-    if (calc.tarifa === null || calc.tarifa === undefined) {
-      alert('La combinación seleccionada no aplica. Cambia el tipo de cliente o solicitud.');
-      return;
+    for (const [indice, integrante] of integrantes.entries()) {
+      const numero = indice + 1;
+      if (!integrante.nombre.trim() || !integrante.telefono.trim() || !integrante.email.trim()) {
+        alert(`Nombre, teléfono y email son obligatorios para el integrante ${numero}.`);
+        return;
+      }
+      const tarifa = config.tarifas[integrante.tipoCliente]?.[integrante.tipoSolicitud];
+      if (tarifa === null || tarifa === undefined) {
+        alert(`La combinación seleccionada para el integrante ${numero} no aplica. Cambia el tipo de cliente o solicitud.`);
+        return;
+      }
     }
-    onSave(edit, motivo);
+    onSave({ ...edit, integrantes }, motivo);
     alert('Caso actualizado.');
   }
 
@@ -762,6 +973,7 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
     if (!nuevoSeguimiento.trim()) return;
     const actualizado = {
       ...edit,
+      integrantes,
       seguimiento: nuevoSeguimiento.trim(),
       historial: [...(edit.historial || []), evento('Seguimiento', nuevoSeguimiento.trim(), edit.asesor || 'Asesor')],
     };
@@ -770,55 +982,29 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
     setNuevoSeguimiento('');
   }
 
-
   return <div className="detail-grid">
     <section className="panel">
       <button className="secondary" onClick={onBack}>← Volver a casos</button>
       <div className="section-title">
         <div>
           <h2>{edit.id}</h2>
-          <p>{edit.nombre} · {edit.tipoSolicitud}</p>
+          <p>{textoClienteCaso(edit)} · {integrantes.length} integrante{integrantes.length === 1 ? '' : 's'}</p>
         </div>
         <span className={claseEstado(calc.estado)}>{calc.estado}</span>
       </div>
 
-
       <h2>1. Asesor responsable</h2>
       <AsesorSelect value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} asesoras={config.asesoras} />
 
-      <h2>2. Datos del cliente</h2>
-      <div className="two-cols">
-        <Field required label="Nombre completo" value={edit.nombre} onChange={v => setEdit({ ...edit, nombre: v })} />
-        <Field required label="Teléfono" value={edit.telefono} onChange={v => setEdit({ ...edit, telefono: v })} />
-      </div>
-      <Field required label="Email" type="email" value={edit.email} onChange={v => setEdit({ ...edit, email: v })} />
+      <h2>2. Cantidad</h2>
+      <label>Cantidad de integrantes del caso
+        <input type="number" min="1" max="30" value={integrantes.length} onChange={e => cambiarCantidad(e.target.value)} />
+      </label>
+      <p className="hint">Al aumentar la cantidad se habilitan nuevos campos de datos, solicitud y documentos. Al reducirla, se eliminan los últimos integrantes del formulario.</p>
 
-      <h2>3. Tipo de solicitud</h2>
-      <div className="two-cols">
-        <label>Tipo de cliente / paquete
-          <select value={edit.tipoClienteKey} onChange={e => setEdit({ ...edit, tipoClienteKey: e.target.value })}>
-            {Object.entries(config.tarifas).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
-          </select>
-        </label>
-        <label>Tipo de solicitud
-          <select value={edit.tipoSolicitudKey} onChange={e => cambiarSolicitudDetalle(e.target.value)}>
-            {tiposSolicitud.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-        </label>
-      </div>
+      <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
 
-      {edit.tipoSolicitudKey === 'primeraVez' && <label>Valor informativo FedEx si la visa es aprobada
-        <select value={edit.fedex || ''} onChange={e => setEdit({ ...edit, fedex: e.target.value })}>
-          <option value="">No aplica / pendiente por definir</option>
-          <option value={config.costos.fedexDomicilio}>Domicilio - {moneda(config.costos.fedexDomicilio)}</option>
-          <option value={config.costos.fedexAltoPrado}>Recoger en FedEx Alto Prado - {moneda(config.costos.fedexAltoPrado)}</option>
-        </select>
-      </label>}
-
-      <h2>4. Documentos recibidos</h2>
-      <Checklist tipoSolicitud={edit.tipoSolicitudKey} documentos={edit.documentosObj} onChange={(id, checked) => setEdit({ ...edit, documentosObj: { ...edit.documentosObj, [id]: checked } })} />
-
-      <h2>5. Asesoría</h2>
+      <h2>6. Asesoría</h2>
       <div className="two-cols">
         <label>Fecha tentativa de asesoría
           <input type="date" value={edit.fechaAsesoria || ''} onChange={e => setEdit({ ...edit, fechaAsesoria: e.target.value })} />
@@ -827,17 +1013,20 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
           <input type="time" value={edit.horaAsesoria || ''} onChange={e => setEdit({ ...edit, horaAsesoria: e.target.value })} />
         </label>
       </div>
-      <h2>6. Facturación</h2>
+
+      <h2>7. Facturación</h2>
       <FacturacionFields
         data={edit.facturacion}
         onChange={facturacion => setEdit({ ...edit, facturacion })}
-        tipoClienteKey={edit.tipoClienteKey}
-        tipoSolicitudKey={edit.tipoSolicitudKey}
-        datosCliente={{ nombre: edit.nombre, telefono: edit.telefono, correo: edit.email }}
+        tipoClienteKey={principal.tipoCliente}
+        tipoSolicitudKey={principal.tipoSolicitud}
+        datosCliente={{ nombre: principal.nombre, telefono: principal.telefono, correo: principal.email }}
         config={config}
+        valorCaso={calc.totalPesos}
+        cantidadIntegrantes={integrantes.length}
       />
 
-      <h2>7. Fecha Cita embajada</h2>
+      <h2>8. Fecha Cita embajada</h2>
       <label>Fecha Cita embajada
         <input type="date" value={edit.fechaCitaEmbajada || ''} onChange={e => setEdit({ ...edit, fechaCitaEmbajada: e.target.value })} />
       </label>
@@ -860,7 +1049,7 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
     </section>
 
     <aside className="side-stack">
-      <Resumen calculo={calc} facturacion={edit.facturacion} tipoClienteKey={edit.tipoClienteKey} config={config} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} fechaCitaEmbajada={edit.fechaCitaEmbajada} />
+      <Resumen calculo={calc} facturacion={edit.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} fechaCitaEmbajada={edit.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} />
       <section className="panel">
         <h2>Nuevo seguimiento</h2>
         <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
@@ -898,7 +1087,7 @@ function Plantillas({ casos, onOpen }) {
       </label>
       <label>Caso relacionado
         <select value={caso?.id || ''} onChange={e => setCasoId(e.target.value)}>
-          {casos.map(c => <option key={c.id} value={c.id}>{c.id} · {c.nombre}</option>)}
+          {casos.map(c => <option key={c.id} value={c.id}>{c.id} · {textoClienteCaso(c)}</option>)}
         </select>
       </label>
     </div>
@@ -920,13 +1109,15 @@ function Plantillas({ casos, onOpen }) {
 
 function aplicarPlantilla(cuerpo, caso) {
   if (!caso) return cuerpo;
-  const faltantes = documentosRequeridos(caso.tipoSolicitudKey)
-    .filter(id => !caso.documentosObj?.[id])
-    .map(id => `- ${documentosCatalogo[id]?.label || id}`)
+  const integrantes = normalizarIntegrantes(caso);
+  const faltantes = integrantes.flatMap((integrante, indice) => documentosRequeridos(integrante.tipoSolicitud)
+    .filter(id => !integrante.documentos?.[id])
+    .map(id => `- Integrante ${indice + 1} (${integrante.nombre || 'sin nombre'}): ${documentosCatalogo[id]?.label || id}`))
     .join('\n') || '- No hay documentos pendientes.';
+  const cliente = integrantes.length > 1 ? `${integrantes[0]?.nombre || 'cliente'} y grupo familiar` : (integrantes[0]?.nombre || caso.nombre || 'cliente');
 
   return cuerpo
-    .replaceAll('{{cliente}}', caso.nombre || 'cliente')
+    .replaceAll('{{cliente}}', cliente)
     .replaceAll('{{asesor}}', caso.asesor || 'Equipo de visas')
     .replaceAll('{{documentosPendientes}}', faltantes);
 }
@@ -945,13 +1136,14 @@ function Historial({ historial }) {
   </section>;
 }
 
-function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, datosCliente = {}, config }) {
+function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, datosCliente = {}, config, valorCaso = null, cantidadIntegrantes = 1 }) {
   const [copiadoFacturacion, setCopiadoFacturacion] = useState(false);
-  const facturacion = normalizarFacturacion(data, { tipoClienteKey, tipoSolicitudKey }, config);
-  const valor = calcularValorFacturacion(facturacion, tipoClienteKey, config);
+  const valorFinal = valorCaso !== null && valorCaso !== undefined ? Number(valorCaso) : null;
+  const facturacion = normalizarFacturacion(data, { tipoClienteKey, tipoSolicitudKey }, config, valorFinal);
+  const valor = valorFinal !== null ? valorFinal : calcularValorFacturacion(facturacion, tipoClienteKey, config);
 
   function actualizar(campo, valorCampo) {
-    onChange(normalizarFacturacion({ ...facturacion, [campo]: valorCampo }, { tipoClienteKey, tipoSolicitudKey }, config));
+    onChange(normalizarFacturacion({ ...facturacion, [campo]: valorCampo }, { tipoClienteKey, tipoSolicitudKey }, config, valorFinal));
   }
 
   function copiarDatosCliente() {
@@ -961,11 +1153,11 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
       telefono: datosCliente.telefono || facturacion.telefono,
       correo: datosCliente.correo || facturacion.correo,
       tipoTramite: tipoSolicitudKey || facturacion.tipoTramite,
-    }, { tipoClienteKey, tipoSolicitudKey }, config));
+    }, { tipoClienteKey, tipoSolicitudKey }, config, valorFinal));
   }
 
   async function copiarDatosFacturacion() {
-    const texto = generarTextoFacturacion(facturacion, tipoClienteKey, tipoSolicitudKey, config);
+    const texto = generarTextoFacturacion(facturacion, tipoClienteKey, tipoSolicitudKey, config, valor, cantidadIntegrantes);
     try {
       await navigator.clipboard.writeText(texto);
       setCopiadoFacturacion(true);
@@ -979,7 +1171,7 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
     <div className="actions-row compact">
       <button type="button" className="secondary fit" onClick={copiarDatosCliente}>Copiar datos del cliente</button>
       <button type="button" className="primary fit" onClick={copiarDatosFacturacion}>{copiadoFacturacion ? 'Datos copiados' : 'Copiar datos Facturación'}</button>
-      <span className="hint">El valor se calcula con las tarifas configuradas y el tipo de trámite seleccionado.</span>
+      <span className="hint">El valor corresponde a la facturación AmCham del caso. Si hay varios integrantes, suma las asesorías configuradas para cada uno.</span>
     </div>
     <div className="two-cols">
       <Field label="Nombre" value={facturacion.nombre} onChange={v => actualizar('nombre', v)} />
@@ -1015,12 +1207,17 @@ function Checklist({ tipoSolicitud, documentos, onChange }) {
   </div>;
 }
 
-function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada }) {
-  const facturacionNormalizada = normalizarFacturacion(facturacion, { tipoClienteKey }, config);
+function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada, cantidadIntegrantes = 1 }) {
+  const facturacionNormalizada = normalizarFacturacion(facturacion, { tipoClienteKey }, config, calculo.totalPesos);
   return <section className="panel summary">
     <h2>Resumen automático</h2>
+    <Line label="Cantidad de integrantes" value={calculo.cantidad || cantidadIntegrantes || 1} />
     <Line label="Valor asesoría AmCham" value={moneda(calculo.tarifa)} />
     <div className="total"><span>Total a facturar por AmCham</span><strong>{moneda(calculo.totalPesos)}</strong></div>
+    {calculo.detalleIntegrantes?.length > 1 && <div className="info-box muted">
+      <strong>Detalle por integrante</strong>
+      {calculo.detalleIntegrantes.map(detalle => <Line key={detalle.id} label={`Integrante ${detalle.numero} · ${detalle.nombre || textoSolicitud(detalle.tipoSolicitud)}`} value={`${textoSolicitud(detalle.tipoSolicitud)} · ${moneda(detalle.tarifa)}`} />)}
+    </div>}
     <div className="info-box">
       <strong>Valores informativos para el cliente</strong>
       <p>Estos valores no ingresan a AmCham y no hacen parte de nuestra facturación. Se muestran únicamente para que el cliente los tenga en cuenta en su presupuesto y los pague directamente cuando corresponda.</p>
@@ -1029,7 +1226,7 @@ function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, 
       <Line label="Derechos consulares" value={calculo.requiereDerechos ? `USD ${calculo.derechosConsularesUsd}` : 'No aplica'} />
     </div>
     <div className={claseEstado(calculo.estado)}>{calculo.estado}</div>
-    <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. El estado del proceso se actualiza según los documentos recibidos o la selección manual de la asesora.</p>
+    <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. El estado del proceso se actualiza según los documentos recibidos de todos los integrantes o la selección manual de la asesora.</p>
     {(fechaAsesoria || horaAsesoria) && <p className="hint"><strong>Asesoría:</strong> {fechaAsesoria || 'sin fecha'} {horaAsesoria || ''}</p>}
     {facturacion && <div className="info-box muted">
       <strong>Facturación</strong>

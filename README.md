@@ -1,28 +1,35 @@
-# SIGV Web - Fase 2.7 Facturación y cita embajada
+# SIGV Web - Fase 2.8 Casos con múltiples integrantes
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
 ## Ajustes aplicados en esta versión
 
-- Se agregó la sección **6. Facturación** en **Nuevo caso** y en el detalle editable de **Casos**.
-- La sección de facturación incluye los campos:
-  - Nombre.
-  - Cédula o NIT.
-  - Teléfono.
-  - Dirección.
-  - Correo.
-  - Tipo de trámite: Primera vez, Renovación, Actualización o Global Entry.
-  - Medio de pago: Transferencia o Efectivo.
-  - Valor calculado automáticamente según el tipo de trámite y las tarifas configuradas.
-- Se agregó el botón **Copiar datos del cliente** para facilitar el diligenciamiento de la información de facturación.
-- Se agregó la sección **7. Fecha Cita embajada** con selector de fecha sin hora.
-- **Observaciones y seguimiento** ya no tiene numeración y quedó ubicado justo encima de **Estado del Proceso**.
-- Se mantuvo la uniformidad del orden entre **Nuevo caso** y **Casos**.
-- El resumen automático ahora muestra información resumida de facturación y la fecha de cita de embajada cuando aplique.
+- Se agregó el nuevo paso **2. Cantidad** debajo de **1. Asesor responsable**.
+- El campo de cantidad permite indicar cuántos integrantes tiene el caso, por ejemplo un grupo familiar.
+- Según la cantidad seleccionada, el sistema despliega para cada integrante:
+  - **3. Datos del cliente**.
+  - **4. Tipo de solicitud**.
+  - **5. Documentos recibidos**.
+- Se ajustó la numeración del flujo operativo:
+  1. Asesor responsable.
+  2. Cantidad.
+  3. Datos del cliente.
+  4. Tipo de solicitud.
+  5. Documentos recibidos.
+  6. Asesoría.
+  7. Facturación.
+  8. Fecha Cita embajada.
+- **Observaciones y seguimiento** se mantiene sin numeración, justo antes de **Estado del Proceso**.
+- **Estado del Proceso** se mantiene al final y sigue siendo la única forma segura de cambiar el estado manualmente.
+- El cálculo de **Facturación AmCham** ahora suma las tarifas de todos los integrantes del caso.
+- El conteo de documentos y el estado automático se calculan tomando en cuenta todos los integrantes.
+- En **Casos**, la búsqueda permite encontrar cualquier integrante del caso, no solo el principal.
+- Las plantillas ahora identifican documentos pendientes por integrante.
 
 ## Se mantiene desde fases anteriores
 
-- Sección **Configuración** con tarifas de asesoría editables.
+- Sección **Configuración** con tarifas de asesoría editables mediante botón **Guardar**.
+- Modal para confirmaciones y notificaciones en Configuración.
 - Listado editable de **Asesoras** conectado con:
   - **Nuevo caso** > Asesor responsable.
   - **Casos** > Detalle editable del caso > Asesor responsable.
@@ -32,17 +39,14 @@ Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
   - FedEx domicilio.
   - FedEx Alto Prado.
 - Los valores informativos no se suman a los ingresos ni a la facturación de AmCham.
+- Botón **Copiar datos Facturación** en la sección de facturación.
 - Base React + Vite limpia y ejecutable.
 - Login simple de prueba.
 - Dashboard con métricas operativas.
-- Nuevo caso con campos obligatorios: asesor, nombre completo, teléfono y email.
-- Checklist dinámico según tipo de solicitud.
-- Estado del Proceso automático o manual.
 - Listado de casos con búsqueda y filtros.
 - Apertura y edición completa de cada caso.
 - Seguimiento operativo por caso.
 - Historial cronológico de movimientos.
-- Acciones rápidas.
 - Plantillas y respuestas rápidas personalizadas por caso.
 - Persistencia local en el navegador mediante `localStorage`.
 
@@ -78,16 +82,3 @@ Clave: `1234`
 - Esta fase todavía no conecta Google Sheets.
 - Los datos y la configuración se guardan localmente en el navegador para pruebas internas.
 - El ZIP oficial no incluye `node_modules/`, `dist/` ni `package-lock.json`.
-
-
-## Fase 2.7 - Ajustes operativos
-
-- Configuración ahora se guarda únicamente con el botón Guardar.
-- Se agregó modal para notificaciones y confirmaciones en Configuración.
-- En Facturación se agregó el botón Copiar datos Facturación para copiar los datos en texto organizado.
-
-
-## Fase 2.7
-
-- Se retiraron los botones rápidos de cambio de estado en el detalle de casos.
-- El estado del caso solo se modifica desde la sección final Estado del Proceso.
