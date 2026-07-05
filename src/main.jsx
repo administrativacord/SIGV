@@ -1,8 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { auth, db } from './firebase';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore';
 
-const APP_VERSION = 'Fase 2.9 Web · Email opcional y descuentos por cantidad';
+const APP_VERSION = 'Fase 3.0 Web · Firebase Firestore';
 
 const tarifasBase = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -524,39 +539,103 @@ function prepararCasoGuardado(caso, config = configuracionBase) {
 
 function App() {
   const [logueado, setLogueado] = useState(false);
-  const [usuario, setUsuario] = useState('admin');
-  const [clave, setClave] = useState('1234');
+  const [usuarioAuth, setUsuarioAuth] = useState(null);
+  const [usuario, setUsuario] = useState('');
+  const [clave, setClave] = useState('');
   const [vista, setVista] = useState('dashboard');
   const [form, setForm] = useState(inicialFormulario);
   const [casoAbiertoId, setCasoAbiertoId] = useState(null);
-  const [config, setConfig] = useState(() => {
-    try {
-      const guardada = localStorage.getItem('sigv_configuracion_fase23');
-      return guardada ? normalizarConfiguracion(JSON.parse(guardada)) : normalizarConfiguracion(configuracionBase);
-    } catch {
-      return normalizarConfiguracion(configuracionBase);
-    }
-  });
-  const [casos, setCasos] = useState(() => {
-    try {
-      const guardados = localStorage.getItem('sigv_casos_fase2');
-      return guardados ? JSON.parse(guardados).map(c => prepararCasoGuardado(c, config)) : casosIniciales.map(c => prepararCasoGuardado(c, config));
-    } catch {
-      return casosIniciales.map(c => prepararCasoGuardado(c, config));
-    }
-  });
+  const [config, setConfigState] = useState(() => normalizarConfiguracion(configuracionBase));
+  const [casos, setCasos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [errorConexion, setErrorConexion] = useState('');
 
   useEffect(() => {
-    localStorage.setItem('sigv_configuracion_fase23', JSON.stringify(config));
+    const cancelar = onAuthStateChanged(auth, user => {
+      setUsuarioAuth(user);
+      setLogueado(!!user);
+      setCargando(false);
+      if (!user) {
+        setCasos([]);
+        setConfigState(normalizarConfiguracion(configuracionBase));
+      }
+    });
+    return cancelar;
+  }, []);
+
+  useEffect(() => {
+    if (!usuarioAuth) return undefined;
+    setCargando(true);
+    setErrorConexion('');
+
+    const configuracionRef = doc(db, 'configuracion', 'general');
+    const cancelarConfig = onSnapshot(configuracionRef, snapshot => {
+      if (snapshot.exists()) {
+        const limpia = normalizarConfiguracion(snapshot.data());
+        setConfigState(limpia);
+        localStorage.setItem('sigv_configuracion_fase3_backup', JSON.stringify(limpia));
+      } else {
+        setConfigState(normalizarConfiguracion(configuracionBase));
+      }
+    }, error => {
+      console.error('Error cargando configuración:', error);
+      const respaldo = localStorage.getItem('sigv_configuracion_fase3_backup');
+      if (respaldo) setConfigState(normalizarConfiguracion(JSON.parse(respaldo)));
+      setErrorConexion('No se pudo cargar la configuración desde Firestore. Revisa que Firestore esté creado y que las reglas permitan acceso a usuarios autenticados.');
+    });
+
+    const casosRef = query(collection(db, 'casos'), orderBy('createdAtMs', 'desc'));
+    const cancelarCasos = onSnapshot(casosRef, snapshot => {
+      const lista = snapshot.docs.map(item => prepararCasoGuardado({ id: item.id, ...item.data() }, config));
+      setCasos(lista);
+      localStorage.setItem('sigv_casos_fase3_backup', JSON.stringify(lista));
+      setCargando(false);
+    }, error => {
+      console.error('Error cargando casos:', error);
+      const respaldo = localStorage.getItem('sigv_casos_fase3_backup');
+      if (respaldo) {
+        setCasos(JSON.parse(respaldo).map(c => prepararCasoGuardado(c, config)));
+      }
+      setCargando(false);
+      setErrorConexion('No se pudieron cargar los casos desde Firestore. Revisa que Firestore esté creado, que exista un índice si Firebase lo solicita o que las reglas permitan acceso.');
+    });
+
+    return () => {
+      cancelarConfig();
+      cancelarCasos();
+    };
+  }, [usuarioAuth]);
+
+  useEffect(() => {
     setCasos(prev => prev.map(c => prepararCasoGuardado(c, config)));
   }, [config]);
 
-  useEffect(() => {
-    localStorage.setItem('sigv_casos_fase2', JSON.stringify(casos));
-  }, [casos]);
-
   const calculo = useMemo(() => calcularCaso(form, config), [form, config]);
   const casoAbierto = casos.find(c => c.id === casoAbiertoId);
+
+  async function iniciarSesion(e) {
+    e?.preventDefault?.();
+    if (!usuario.trim() || !clave.trim()) {
+      alert('Debes ingresar correo y contraseña.');
+      return;
+    }
+    try {
+      setGuardando(true);
+      await signInWithEmailAndPassword(auth, usuario.trim(), clave);
+    } catch (error) {
+      console.error('Error de login:', error);
+      alert('No se pudo iniciar sesión. Verifica que el usuario exista en Firebase Authentication y que la contraseña sea correcta.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function cerrarSesion() {
+    await signOut(auth);
+    setVista('dashboard');
+    setCasoAbiertoId(null);
+  }
 
   function validarFormulario() {
     if (!form.asesor.trim()) return 'Debes ingresar el nombre del asesor.';
@@ -572,7 +651,7 @@ function App() {
     return '';
   }
 
-  function guardarCaso(e) {
+  async function guardarCaso(e) {
     e.preventDefault();
     const error = validarFormulario();
     if (error) {
@@ -581,8 +660,10 @@ function App() {
     }
     const integrantes = normalizarIntegrantes(form);
     const principal = integrantes[0];
+    const id = generarId(casos);
+    const creadoPor = usuarioAuth?.email || 'Sistema';
     const nuevo = {
-      id: generarId(casos),
+      id,
       asesor: form.asesor.trim(),
       cantidad: integrantes.length,
       integrantes: integrantes.map(serializarIntegrante),
@@ -595,6 +676,9 @@ function App() {
       tipoSolicitud: textoSolicitud(principal.tipoSolicitud),
       fedex: principal.fedex,
       total: calculo.totalPesos,
+      subtotalAsesoria: calculo.subtotalAsesoria,
+      porcentajeDescuento: calculo.porcentajeDescuento,
+      valorDescuento: calculo.valorDescuento,
       estado: calculo.estado,
       documentos: `${calculo.completos}/${calculo.requeridos.length}`,
       documentosObj: { ...principal.documentos },
@@ -605,14 +689,32 @@ function App() {
       facturacion: normalizarFacturacion(form.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calculo.totalPesos),
       fechaCitaEmbajada: form.fechaCitaEmbajada,
       estadoManual: form.estadoManual,
+      creadoPor,
+      actualizadoPor: creadoPor,
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
       historial: [
         evento('Creación', `Caso creado por ${form.asesor.trim()}. Integrantes: ${integrantes.length}. Documentos recibidos: ${calculo.completos}/${calculo.requeridos.length}.`, form.asesor.trim()),
       ],
     };
-    setCasos(prev => [nuevo, ...prev]);
-    setForm(inicialFormulario());
-    setCasoAbiertoId(nuevo.id);
-    setVista('detalleCaso');
+
+    try {
+      setGuardando(true);
+      await setDoc(doc(db, 'casos', id), {
+        ...nuevo,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setCasos(prev => [nuevo, ...prev.filter(c => c.id !== id)]);
+      setForm(inicialFormulario());
+      setCasoAbiertoId(id);
+      setVista('detalleCaso');
+    } catch (error) {
+      console.error('Error guardando caso:', error);
+      alert('No se pudo guardar el caso en Firestore. Revisa la conexión, las reglas de seguridad y que Firestore esté activo.');
+    } finally {
+      setGuardando(false);
+    }
   }
 
   function abrirCaso(id) {
@@ -620,13 +722,14 @@ function App() {
     setVista('detalleCaso');
   }
 
-  function actualizarCaso(casoActualizado, motivo = 'Caso actualizado desde detalle.') {
+  async function actualizarCaso(casoActualizado, motivo = 'Caso actualizado desde detalle.') {
     const integrantes = normalizarIntegrantes(casoActualizado);
     const principal = integrantes[0] || crearIntegrante(1);
     const calc = calcularCaso({
       integrantes,
       estadoManual: casoActualizado.estadoManual,
     }, config);
+    const actualizadoPor = usuarioAuth?.email || 'Sistema';
     const actualizado = {
       ...casoActualizado,
       cantidad: integrantes.length,
@@ -641,19 +744,57 @@ function App() {
       fedex: principal.fedex || '',
       documentosObj: { ...principal.documentos },
       total: calc.totalPesos,
+      subtotalAsesoria: calc.subtotalAsesoria,
+      porcentajeDescuento: calc.porcentajeDescuento,
+      valorDescuento: calc.valorDescuento,
       estado: calc.estado,
       documentos: `${calc.completos}/${calc.requeridos.length}`,
       facturacion: normalizarFacturacion(casoActualizado.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calc.totalPesos),
       fechaCitaEmbajada: casoActualizado.fechaCitaEmbajada || '',
+      actualizadoPor,
+      updatedAtMs: Date.now(),
       historial: [...(casoActualizado.historial || []), evento('Actualización', motivo, casoActualizado.asesor || 'Sistema')],
     };
-    setCasos(prev => prev.map(c => c.id === actualizado.id ? actualizado : c));
-    setCasoAbiertoId(actualizado.id);
+
+    try {
+      setGuardando(true);
+      await setDoc(doc(db, 'casos', actualizado.id), {
+        ...actualizado,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      setCasos(prev => prev.map(c => c.id === actualizado.id ? actualizado : c));
+      setCasoAbiertoId(actualizado.id);
+    } catch (error) {
+      console.error('Error actualizando caso:', error);
+      alert('No se pudo actualizar el caso en Firestore.');
+    } finally {
+      setGuardando(false);
+    }
   }
 
+  async function guardarConfigFirestore(nuevaConfig) {
+    const limpia = normalizarConfiguracion(nuevaConfig);
+    try {
+      setGuardando(true);
+      await setDoc(doc(db, 'configuracion', 'general'), {
+        ...limpia,
+        updatedAt: serverTimestamp(),
+        updatedAtMs: Date.now(),
+        actualizadoPor: usuarioAuth?.email || 'Sistema',
+      }, { merge: true });
+      setConfigState(limpia);
+      localStorage.setItem('sigv_configuracion_fase3_backup', JSON.stringify(limpia));
+    } catch (error) {
+      console.error('Error guardando configuración:', error);
+      alert('No se pudo guardar la configuración en Firestore.');
+      throw error;
+    } finally {
+      setGuardando(false);
+    }
+  }
 
   if (!logueado) {
-    return <Login usuario={usuario} clave={clave} setUsuario={setUsuario} setClave={setClave} onLogin={() => usuario === 'admin' && clave === '1234' ? setLogueado(true) : alert('Usuario o clave incorrectos')} />;
+    return <Login usuario={usuario} clave={clave} setUsuario={setUsuario} setClave={setClave} onLogin={iniciarSesion} guardando={guardando} />;
   }
 
   const titulo = vista === 'nuevoCaso' ? 'Nuevo caso de visa'
@@ -671,7 +812,7 @@ function App() {
       <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => setVista('casos')}>Casos</button>
       <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => setVista('plantillas')}>Plantillas</button>
       <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => setVista('configuracion')}>Configuración</button>
-      <button onClick={() => setLogueado(false)}>Cerrar sesión</button>
+      <button onClick={cerrarSesion}>Cerrar sesión</button>
     </aside>
 
     <main className="content">
@@ -683,36 +824,47 @@ function App() {
         <span>{APP_VERSION}</span>
       </header>
 
-      {vista === 'dashboard' && <Dashboard casos={casos} onOpen={abrirCaso} />}
+      <div className="connection-row">
+        <span className="pill ok">Firebase conectado</span>
+        <small>{usuarioAuth?.email}</small>
+        {guardando && <small>Guardando cambios...</small>}
+      </div>
 
-      {vista === 'nuevoCaso' && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} config={config} />}
+      {errorConexion && <div className="alert-box">{errorConexion}</div>}
+      {cargando && <div className="empty">Cargando información desde Firestore...</div>}
 
-      {vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} />}
+      {!cargando && vista === 'dashboard' && <Dashboard casos={casos} onOpen={abrirCaso} />}
 
-      {vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => setVista('casos')} onSave={actualizarCaso} config={config} />}
+      {!cargando && vista === 'nuevoCaso' && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} config={config} guardando={guardando} />}
 
-      {vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
+      {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} />}
 
-      {vista === 'configuracion' && <Configuracion config={config} setConfig={setConfig} />}
+      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => setVista('casos')} onSave={actualizarCaso} config={config} guardando={guardando} />}
+
+      {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">El caso seleccionado aún se está cargando o no existe.</div>}
+
+      {!cargando && vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
+
+      {!cargando && vista === 'configuracion' && <Configuracion config={config} setConfig={guardarConfigFirestore} />}
     </main>
   </div>;
 }
 
-function Login({ usuario, clave, setUsuario, setClave, onLogin }) {
+function Login({ usuario, clave, setUsuario, setClave, onLogin, guardando = false }) {
   return <div className="login-page">
-    <div className="login-card">
+    <form className="login-card" onSubmit={onLogin}>
       <div className="brand">SIGV</div>
       <h1>Sistema Integral de Gestión de Visas</h1>
       <p>AmCham Atlántico y Magdalena</p>
-      <label>Usuario
-        <input value={usuario} onChange={e => setUsuario(e.target.value)} />
+      <label>Correo electrónico
+        <input type="email" value={usuario} onChange={e => setUsuario(e.target.value)} placeholder="usuario@empresa.com" autoComplete="email" />
       </label>
-      <label>Clave
-        <input type="password" value={clave} onChange={e => setClave(e.target.value)} onKeyDown={e => e.key === 'Enter' && onLogin()} />
+      <label>Contraseña
+        <input type="password" value={clave} onChange={e => setClave(e.target.value)} autoComplete="current-password" />
       </label>
-      <button onClick={onLogin}>Ingresar</button>
-      <small>Usuario: admin · Clave: 1234</small>
-    </div>
+      <button type="submit" disabled={guardando}>{guardando ? 'Ingresando...' : 'Ingresar con Firebase'}</button>
+      <small>El usuario debe estar creado en Firebase Authentication con proveedor Email/Password.</small>
+    </form>
   </div>;
 }
 
@@ -741,7 +893,7 @@ function Dashboard({ casos, onOpen }) {
   </>;
 }
 
-function NuevoCaso({ form, setForm, calculo, guardarCaso, config }) {
+function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = false }) {
   const integrantes = normalizarIntegrantes(form);
   const principal = integrantes[0] || crearIntegrante(1);
 
@@ -812,7 +964,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config }) {
 
       <Resumen calculo={calculo} facturacion={form.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} compacto />
 
-      <button className="primary" type="submit">Guardar caso</button>
+      <button className="primary" type="submit" disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar caso'}</button>
     </section>
   </form>;
 }
@@ -951,7 +1103,7 @@ function CaseTable({ casos, onOpen, compacto = false }) {
   </div>;
 }
 
-function DetalleCaso({ caso, onBack, onSave, config }) {
+function DetalleCaso({ caso, onBack, onSave, config, guardando = false }) {
   const [edit, setEdit] = useState(() => ({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) }));
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
   const integrantes = normalizarIntegrantes(edit);
@@ -1065,7 +1217,7 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
           {estadosProceso.map(estado => <option key={estado} value={estado}>{estado}</option>)}
         </select>
       </label>
-      <button className="primary" onClick={() => guardar()}>Guardar cambios</button>
+      <button className="primary" onClick={() => guardar()} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar cambios'}</button>
     </section>
 
     <aside className="side-stack">
@@ -1398,10 +1550,14 @@ function Configuracion({ config, setConfig }) {
     );
   }
 
-  function guardarConfiguracion() {
+  async function guardarConfiguracion() {
     const limpia = normalizarConfiguracion(borrador);
-    setConfig(limpia);
-    mostrarModal('Configuración guardada', 'Los cambios fueron guardados correctamente y ya se reflejan en Nuevo caso, Casos y Resumen automático.');
+    try {
+      await setConfig(limpia);
+      mostrarModal('Configuración guardada', 'Los cambios fueron guardados correctamente en Firestore y ya se reflejan en Nuevo caso, Casos y Resumen automático.');
+    } catch {
+      mostrarModal('Error al guardar', 'No se pudo guardar la configuración en Firestore. Revisa la conexión o las reglas de seguridad.');
+    }
   }
 
   return <div className="config-stack">
@@ -1484,7 +1640,7 @@ function Configuracion({ config, setConfig }) {
     <section className="panel actions-row">
       <button type="button" className="secondary fit" onClick={restaurarValoresBase}>Restaurar configuración base</button>
       <button type="button" className="primary fit" onClick={guardarConfiguracion}>Guardar</button>
-      <span className="hint">La configuración se guarda en el navegador durante esta fase local. Los valores informativos no se suman a la facturación de AmCham.</span>
+      <span className="hint">La configuración se guarda en Firebase Firestore. Los valores informativos no se suman a la facturación de AmCham.</span>
     </section>
   </div>;
 }
