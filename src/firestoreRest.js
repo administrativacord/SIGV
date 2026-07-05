@@ -116,7 +116,7 @@ export async function guardarDocumentoRest(coleccion, documentoId, datos) {
 
 export async function diagnosticarFirestoreRest() {
   const token = await obtenerToken();
-  const url = `${BASE_URL}/__diagnostico__/conexion`;
+  const url = `${BASE_URL}/diagnosticoSigv/conexion`;
   const inicio = Date.now();
   const respuesta = await conTimeout(fetch(url, {
     method: 'PATCH',

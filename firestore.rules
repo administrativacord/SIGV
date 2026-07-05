@@ -20,7 +20,7 @@ service cloud.firestore {
       allow write: if signedIn() && request.auth.uid == userId;
     }
 
-    match /__diagnostico__/{documentoId} {
+    match /diagnosticoSigv/{documentoId} {
       allow read, write: if signedIn();
     }
   }

@@ -14,7 +14,8 @@ import {
   obtenerDocumentoRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 3.2 Web · Firestore REST seguro';
+const APP_VERSION = 'Fase 3.4 Web · Firestore diagnóstico limpio';
+const BUILD_ID = '2026-07-05-034';
 
 function conTiempoLimite(promesa, ms, mensaje) {
   let timer;
@@ -857,7 +858,7 @@ function App() {
           <h1>{titulo}</h1>
           <p>Sistema Integral de Gestión de Visas · AmCham Atlántico y Magdalena</p>
         </div>
-        <span>{APP_VERSION}</span>
+        <span>{APP_VERSION} · {BUILD_ID}</span>
       </header>
 
       <div className="connection-row">

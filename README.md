@@ -1,4 +1,4 @@
-# SIGV Web - Fase 3.2 Firebase Firestore REST seguro
+# SIGV Web - Fase 3.4 Firebase Firestore REST seguro
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
@@ -113,7 +113,7 @@ Si el login funciona pero no aparecen casos, revisar en Firebase Console:
 4. Al crear un caso debe aparecer un documento en la colección casos.
 
 
-## Corrección Fase 3.2
+## Corrección Fase 3.4
 
 Esta versión cambia la carga principal de Firestore a una conexión REST autenticada. Esto ayuda cuando el SDK web de Firestore se queda esperando respuesta por el canal de tiempo real/WebChannel en algunas redes corporativas, antivirus, proxies o navegadores.
 
@@ -122,14 +122,14 @@ Cambios aplicados:
 - La app ya no depende de `onSnapshot` para cargar casos.
 - La lectura de `casos` y `configuracion/general` se realiza por REST con token del usuario autenticado.
 - Guardar caso, actualizar caso y guardar configuración también usan REST autenticado.
-- Se agregó botón **Probar Firestore** para crear un documento de diagnóstico en `__diagnostico__/conexion`.
-- Se agregó permiso temporal para la colección `__diagnostico__` en `firestore.rules`.
+- Se agregó botón **Probar Firestore** para crear un documento de diagnóstico en `diagnosticoSigv/conexion`.
+- Se agregó permiso temporal para la colección `diagnosticoSigv` en `firestore.rules`.
 - Firestore SDK conserva `experimentalForceLongPolling`, pero la operación principal queda por REST para mayor estabilidad.
 
 Después de publicar estas reglas, al presionar **Probar Firestore** debe aparecer un documento en:
 
 ```text
-Firestore Database > Datos > __diagnostico__ > conexion
+Firestore Database > Datos > diagnosticoSigv > conexion
 ```
 
 Si el diagnóstico falla con error 403, el problema son las reglas. Si falla con error 404 o indica base no encontrada, falta crear Cloud Firestore Database. Si queda sin responder, la red está bloqueando `firestore.googleapis.com`.

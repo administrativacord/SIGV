@@ -1,6 +1,6 @@
 {
-  "name": "sigv-web-fase-3-2-firestore-rest-seguro",
-  "version": "3.2.0",
+  "name": "sigv-web-fase-3-3-firestore-diagnostico-corregido",
+  "version": "3.3.0",
   "private": true,
   "type": "module",
   "scripts": {
