@@ -1,8 +1,21 @@
-# SIGV Web - Fase 2
+# SIGV Web - Fase 2.1 Ajustes Operativos
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
-## Incluye esta fase
+## Ajustes aplicados en esta versión
+
+- En **Nuevo caso** se agregó el paso **5. Asesoría**.
+- Dentro del paso 5 se ubicaron los campos **Fecha tentativa de asesoría** y **Hora tentativa**.
+- Se reorganizó el detalle editable de cada caso para que mantenga el mismo formato y orden de creación:
+  1. Asesor responsable.
+  2. Datos del cliente.
+  3. Tipo de solicitud.
+  4. Documentos recibidos.
+  5. Asesoría.
+  6. Observaciones y seguimiento.
+- Se conservan las acciones rápidas, el resumen automático, el historial cronológico y el seguimiento operativo.
+
+## Incluye desde la Fase 2
 
 - Base React + Vite limpia y ejecutable.
 - Login simple de prueba.

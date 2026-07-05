@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const APP_VERSION = 'Fase 2 Web';
+const APP_VERSION = 'Fase 2.1 Web · Ajustes operativos';
 
 const tarifas = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -427,6 +427,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud }
       <h2>4. Documentos recibidos</h2>
       <Checklist tipoSolicitud={form.tipoSolicitud} documentos={form.documentos} onChange={(id, checked) => setForm({ ...form, documentos: { ...form.documentos, [id]: checked } })} />
 
+      <h2>5. Asesoría</h2>
       <div className="two-cols">
         <label>Fecha tentativa de asesoría
           <input type="date" value={form.fechaAsesoria} onChange={e => setForm({ ...form, fechaAsesoria: e.target.value })} />
@@ -436,6 +437,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud }
         </label>
       </div>
 
+      <h2>6. Observaciones iniciales</h2>
       <label>Observación
         <textarea value={form.observacion} onChange={e => setForm({ ...form, observacion: e.target.value })} placeholder="Ej: pendiente soporte de pago, cliente enviará foto mañana..." />
       </label>
@@ -582,14 +584,17 @@ function DetalleCaso({ caso, onBack, onSave }) {
         <button type="button" onClick={() => accionRapida('Finalizado', 'Se marcó el caso como finalizado.')}>Finalizar</button>
       </div>
 
-      <h2>Información editable</h2>
+      <h2>1. Asesor responsable</h2>
+      <Field required label="Nombre del asesor" value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} />
+
+      <h2>2. Datos del cliente</h2>
       <div className="two-cols">
-        <Field required label="Nombre del asesor" value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} />
         <Field required label="Nombre completo" value={edit.nombre} onChange={v => setEdit({ ...edit, nombre: v })} />
         <Field required label="Teléfono" value={edit.telefono} onChange={v => setEdit({ ...edit, telefono: v })} />
-        <Field required label="Email" type="email" value={edit.email} onChange={v => setEdit({ ...edit, email: v })} />
       </div>
+      <Field required label="Email" type="email" value={edit.email} onChange={v => setEdit({ ...edit, email: v })} />
 
+      <h2>3. Tipo de solicitud</h2>
       <div className="two-cols">
         <label>Tipo de cliente / paquete
           <select value={edit.tipoClienteKey} onChange={e => setEdit({ ...edit, tipoClienteKey: e.target.value })}>
@@ -603,7 +608,7 @@ function DetalleCaso({ caso, onBack, onSave }) {
         </label>
       </div>
 
-      {edit.tipoSolicitudKey === 'primeraVez' && <label>FedEx devolución de pasaporte
+      {edit.tipoSolicitudKey === 'primeraVez' && <label>Si la visa es aprobada, devolución de pasaporte por FedEx
         <select value={edit.fedex || ''} onChange={e => setEdit({ ...edit, fedex: e.target.value })}>
           <option value="">No incluir todavía</option>
           <option value="68000">Domicilio - $68.000</option>
@@ -611,22 +616,25 @@ function DetalleCaso({ caso, onBack, onSave }) {
         </select>
       </label>}
 
+      <h2>4. Documentos recibidos</h2>
+      <Checklist tipoSolicitud={edit.tipoSolicitudKey} documentos={edit.documentosObj} onChange={(id, checked) => setEdit({ ...edit, documentosObj: { ...edit.documentosObj, [id]: checked } })} />
+
+      <h2>5. Asesoría</h2>
       <div className="two-cols">
-        <label>Estado operativo
-          <select value={edit.estadoManual || ''} onChange={e => setEdit({ ...edit, estadoManual: e.target.value })}>
-            {estadosManuales.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-          </select>
-        </label>
-        <label>Fecha de asesoría
+        <label>Fecha tentativa de asesoría
           <input type="date" value={edit.fechaAsesoria || ''} onChange={e => setEdit({ ...edit, fechaAsesoria: e.target.value })} />
         </label>
+        <label>Hora tentativa
+          <input type="time" value={edit.horaAsesoria || ''} onChange={e => setEdit({ ...edit, horaAsesoria: e.target.value })} />
+        </label>
       </div>
-      <label>Hora de asesoría
-        <input type="time" value={edit.horaAsesoria || ''} onChange={e => setEdit({ ...edit, horaAsesoria: e.target.value })} />
+      <label>Estado operativo
+        <select value={edit.estadoManual || ''} onChange={e => setEdit({ ...edit, estadoManual: e.target.value })}>
+          {estadosManuales.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+        </select>
       </label>
 
-      <h2>Documentos y seguimiento</h2>
-      <Checklist tipoSolicitud={edit.tipoSolicitudKey} documentos={edit.documentosObj} onChange={(id, checked) => setEdit({ ...edit, documentosObj: { ...edit.documentosObj, [id]: checked } })} />
+      <h2>6. Observaciones y seguimiento</h2>
       <label>Observación general
         <textarea value={edit.observacion || ''} onChange={e => setEdit({ ...edit, observacion: e.target.value })} />
       </label>
