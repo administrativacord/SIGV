@@ -15,8 +15,8 @@ import {
   eliminarDocumentoRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 4A Web · Roles y permisos';
-const BUILD_ID = '2026-07-05-04A';
+const APP_VERSION = 'Fase 4A.2 Web · ID A0001 y roles';
+const BUILD_ID = '2026-07-05-04A2';
 
 
 const rolesSigv = {
@@ -67,6 +67,30 @@ function perfilAdministradorProvisional(user) {
     activo: true,
     provisional: true,
   }, email);
+}
+
+function perfilAdministradorRescate(user) {
+  return {
+    ...perfilAdministradorProvisional(user),
+    rescateAdministrador: true,
+    motivoRescate: 'No hay ningún Administrador activo en usuariosSigv.',
+  };
+}
+
+function esAdministradorActivo(usuario = {}) {
+  return usuario?.activo !== false && normalizarRolSigv(usuario?.rol) === 'administrador';
+}
+
+function hayAdministradorActivo(usuarios = []) {
+  return usuarios.some(esAdministradorActivo);
+}
+
+function hayAdministradorActivoGuardado(usuarios = []) {
+  return usuarios.some(usuario => esAdministradorActivo(usuario) && !usuario.provisional);
+}
+
+function ordenarUsuariosSigv(usuarios = []) {
+  return [...usuarios].sort((a, b) => String(a.nombre || a.email).localeCompare(String(b.nombre || b.email), 'es'));
 }
 
 function permisosDesdePerfil(perfil) {
@@ -572,10 +596,60 @@ function textoSolicitud(id) {
   return tiposSolicitud.find(t => t.id === id)?.label || id;
 }
 
+function indiceALetras(indice = 0) {
+  let n = Math.max(0, Number(indice) || 0);
+  let letras = '';
+  do {
+    letras = String.fromCharCode(65 + (n % 26)) + letras;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return letras;
+}
+
+function letrasAIndice(letras = 'A') {
+  const limpio = String(letras || 'A').toUpperCase().replace(/[^A-Z]/g, '') || 'A';
+  let indice = 0;
+  for (const letra of limpio) indice = indice * 26 + (letra.charCodeAt(0) - 64);
+  return Math.max(0, indice - 1);
+}
+
+function secuenciaDesdeIdCaso(id = '') {
+  const limpio = String(id || '').trim().toUpperCase();
+  const nuevoFormato = limpio.match(/^([A-Z]+)(\d{1,4})$/);
+  if (nuevoFormato) {
+    const grupo = letrasAIndice(nuevoFormato[1]);
+    const numero = Number(nuevoFormato[2]);
+    if (numero >= 1 && numero <= 9999) return grupo * 9999 + numero;
+  }
+
+  const formatoAnterior = limpio.match(/^CAS-\d{4}-(\d{1,4})$/);
+  if (formatoAnterior) {
+    const numero = Number(formatoAnterior[1]);
+    if (numero >= 1 && numero <= 9999) return numero;
+  }
+
+  const soloNumero = limpio.match(/^(\d{1,4})$/);
+  if (soloNumero) {
+    const numero = Number(soloNumero[1]);
+    if (numero >= 1 && numero <= 9999) return numero;
+  }
+
+  return 0;
+}
+
+function formatearIdCaso(secuencia = 1) {
+  const segura = Math.max(1, Number(secuencia) || 1);
+  const grupo = Math.floor((segura - 1) / 9999);
+  const numero = ((segura - 1) % 9999) + 1;
+  const prefijo = indiceALetras(grupo);
+  const numeroTexto = String(numero).padStart(4, '0');
+  return `${prefijo}${numeroTexto}`;
+}
+
 function generarId(casos) {
-  const consecutivos = casos.map(c => Number(String(c.id || '').split('-').pop())).filter(n => !Number.isNaN(n));
+  const consecutivos = casos.map(c => secuenciaDesdeIdCaso(c.id)).filter(n => n > 0);
   const siguiente = consecutivos.length ? Math.max(...consecutivos) + 1 : 1;
-  return `CAS-2026-${String(siguiente).padStart(4, '0')}`;
+  return formatearIdCaso(siguiente);
 }
 
 function evento(tipo, texto, asesor = 'Sistema') {
@@ -584,7 +658,7 @@ function evento(tipo, texto, asesor = 'Sistema') {
 
 const casosIniciales = [
   {
-    id: 'CAS-2026-0001', asesor: 'Milena', nombre: 'María Gómez', telefono: '3001234567', email: 'maria@email.com',
+    id: 'A0001', asesor: 'Milena', nombre: 'María Gómez', telefono: '3001234567', email: 'maria@email.com',
     tipoClienteKey: 'afiliado', tipoSolicitudKey: 'renovacion', tipoCliente: 'Afiliado', tipoSolicitud: 'Renovación',
     fedex: '', total: 305000, estado: 'Pendiente Agendamiento de Asesoría', documentos: '6/6',
     documentosObj: { foto: true, pasaporte: true, ds160: true, pagoAsesoria: true, visaAnterior: true, autorizacionEnvio: true },
@@ -596,7 +670,7 @@ const casosIniciales = [
     ],
   },
   {
-    id: 'CAS-2026-0002', asesor: 'Ximena', nombre: 'Carlos Pérez', telefono: '3159876543', email: 'carlos@email.com',
+    id: 'A0002', asesor: 'Ximena', nombre: 'Carlos Pérez', telefono: '3159876543', email: 'carlos@email.com',
     tipoClienteKey: 'noAfiliado', tipoSolicitudKey: 'primeraVez', tipoCliente: 'No afiliado', tipoSolicitud: 'Primera vez',
     fedex: '', total: 190000, estado: 'Pendiente Documentación', documentos: '2/4',
     documentosObj: { foto: true, pasaporte: true, ds160: false, pagoAsesoria: false },
@@ -688,14 +762,15 @@ function App() {
 
         if (!activo) return;
 
-        const perfilActual = perfilRemoto
-          ? normalizarUsuarioSigv(perfilRemoto, emailPerfil)
-          : perfilAdministradorProvisional(usuarioAuth);
+        const usuariosLista = ordenarUsuariosSigv(usuariosRemotos.map(item => normalizarUsuarioSigv(item, item.email || item.id)));
+        const noHayAdministrador = !hayAdministradorActivo(usuariosLista);
+        const perfilActual = noHayAdministrador
+          ? perfilAdministradorRescate(usuarioAuth)
+          : (perfilRemoto ? normalizarUsuarioSigv(perfilRemoto, emailPerfil) : perfilAdministradorProvisional(usuarioAuth));
         setPerfil(perfilActual);
 
-        const usuariosLista = usuariosRemotos.map(item => normalizarUsuarioSigv(item, item.email || item.id));
-        const existePerfilEnLista = usuariosLista.some(u => claveUsuarioSigv(u.email) === claveUsuarioSigv(perfilActual.email));
-        setUsuariosSigv(existePerfilEnLista ? usuariosLista : [perfilActual, ...usuariosLista]);
+        const usuariosSinPerfilDuplicado = usuariosLista.filter(u => claveUsuarioSigv(u.email) !== claveUsuarioSigv(perfilActual.email));
+        setUsuariosSigv(ordenarUsuariosSigv([perfilActual, ...usuariosSinPerfilDuplicado]));
 
         const configLimpia = normalizarConfiguracion(configRemota || configuracionBase);
         setConfigState(configLimpia);
@@ -969,12 +1044,12 @@ function App() {
   async function guardarUsuarioSigv(usuarioEditado) {
     if (!permisos.puedeEditarConfiguracion) {
       alert('Solo el Administrador puede administrar usuarios y roles.');
-      return;
+      return false;
     }
     const email = claveUsuarioSigv(usuarioEditado.email);
     if (!email || !email.includes('@')) {
       alert('Debes ingresar un correo válido para el usuario.');
-      return;
+      return false;
     }
     const usuarioLimpio = normalizarUsuarioSigv({
       ...usuarioEditado,
@@ -985,19 +1060,94 @@ function App() {
       updatedAtMs: Date.now(),
       actualizadoPor: usuarioAuth?.email || 'Sistema',
       creadoEnFase4A: true,
+      provisional: false,
     }, email);
+
+    const listaProyectada = [
+      ...usuariosSigv.filter(u => claveUsuarioSigv(u.email) !== email),
+      usuarioLimpio,
+    ];
+    if (!hayAdministradorActivoGuardado(listaProyectada)) {
+      alert('No se puede guardar este cambio: SIGV debe conservar siempre al menos un Administrador activo guardado en Firestore.');
+      return false;
+    }
 
     try {
       setGuardando(true);
       await conTiempoLimite(guardarDocumentoRest('usuariosSigv', email, usuarioLimpio), 20000, 'Firestore no respondió al guardar el usuario en 20 segundos.');
       setUsuariosSigv(prev => {
         const sinDuplicado = prev.filter(u => claveUsuarioSigv(u.email) !== email);
-        return [...sinDuplicado, usuarioLimpio].sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+        return ordenarUsuariosSigv([...sinDuplicado, usuarioLimpio]);
       });
       if (claveUsuarioSigv(usuarioAuth?.email) === email) setPerfil(usuarioLimpio);
+      return true;
     } catch (error) {
       console.error('Error guardando usuario SIGV:', error);
       alert(`No se pudo guardar el usuario/rol en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+      return false;
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function reiniciarRolesSigv() {
+    if (!permisos.puedeEditarConfiguracion) {
+      alert('Solo el Administrador puede reiniciar roles.');
+      return;
+    }
+    const emailActual = claveUsuarioSigv(usuarioAuth?.email);
+    if (!emailActual) {
+      alert('No se pudo identificar el correo del usuario autenticado.');
+      return;
+    }
+    const confirma = window.confirm('Esta acción reiniciará los roles: tu usuario quedará como Administrador activo y los demás usuarios quedarán como Asesor activo. ¿Deseas continuar?');
+    if (!confirma) return;
+
+    const base = usuariosSigv.length ? usuariosSigv : [perfilAdministradorProvisional(usuarioAuth)];
+    const sinDuplicados = new Map(base.map(u => [claveUsuarioSigv(u.email), u]));
+    if (!sinDuplicados.has(emailActual)) {
+      sinDuplicados.set(emailActual, perfilAdministradorProvisional(usuarioAuth));
+    }
+
+    const ahoraIso = new Date().toISOString();
+    const ahoraMs = Date.now();
+    const reiniciados = Array.from(sinDuplicados.values()).map(usuario => {
+      const email = claveUsuarioSigv(usuario.email);
+      return normalizarUsuarioSigv({
+        ...usuario,
+        id: email,
+        email,
+        rol: email === emailActual ? 'administrador' : 'asesor',
+        activo: true,
+        provisional: false,
+        rescateAdministrador: false,
+        reiniciadoEnFase4A1: true,
+        updatedAtIso: ahoraIso,
+        updatedAtMs: ahoraMs,
+        actualizadoPor: emailActual,
+      }, email);
+    });
+
+    if (!hayAdministradorActivo(reiniciados)) {
+      alert('No se pudo reiniciar roles porque no quedó ningún Administrador activo.');
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      await Promise.all(reiniciados.map(usuario => conTiempoLimite(
+        guardarDocumentoRest('usuariosSigv', usuario.email, usuario),
+        20000,
+        `Firestore no respondió al reiniciar el usuario ${usuario.email}.`
+      )));
+      const ordenados = ordenarUsuariosSigv(reiniciados);
+      setUsuariosSigv(ordenados);
+      const perfilNuevo = ordenados.find(u => claveUsuarioSigv(u.email) === emailActual) || perfilAdministradorProvisional(usuarioAuth);
+      setPerfil(perfilNuevo);
+      alert('Roles reiniciados correctamente. Tu usuario quedó como Administrador activo y los demás como Asesor activo.');
+    } catch (error) {
+      console.error('Error reiniciando roles SIGV:', error);
+      alert(`No se pudieron reiniciar los roles en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
     } finally {
       setGuardando(false);
     }
@@ -1075,7 +1225,7 @@ function App() {
         <button className="mini-button" type="button" onClick={ejecutarDiagnosticoFirestore}>Probar Firestore</button>
       </div>
 
-      {perfil?.provisional && <div className="alert-box diagnostic">Este usuario no tiene aún un perfil en la colección usuariosSigv. Se activó como Administrador provisional para que puedas configurar los roles iniciales desde Configuración.</div>}
+      {perfil?.provisional && <div className="alert-box diagnostic">{perfil?.rescateAdministrador ? 'No hay ningún Administrador activo en usuariosSigv. Se activó este usuario como Administrador provisional para que puedas reiniciar o corregir los roles.' : 'Este usuario no tiene aún un perfil en la colección usuariosSigv. Se activó como Administrador provisional para que puedas configurar los roles iniciales desde Configuración.'}</div>}
 
       {diagnostico && <div className="alert-box diagnostic">{diagnostico}</div>}
       {errorConexion && <div className="alert-box">{errorConexion}</div>}
@@ -1093,7 +1243,7 @@ function App() {
 
       {!cargando && vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
 
-      {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} guardando={guardando} perfilActual={perfil} />}
+      {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} onResetRoles={reiniciarRolesSigv} guardando={guardando} perfilActual={perfil} />}
     </main>
   </div>;
 }
@@ -1490,6 +1640,8 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
           {estadosProceso.map(estado => <option key={estado} value={estado}>{estado}</option>)}
         </select>
       </label>
+      <Resumen calculo={calc} facturacion={edit.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} fechaCitaEmbajada={edit.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} compacto />
+
       <div className="actions-row">
         <button className="primary fit" onClick={() => guardar()} disabled={guardando || !permisos.puedeEditarCasos}>{guardando ? 'Guardando...' : 'Guardar cambios'}</button>
         {permisos.puedeEliminarCasos && <button type="button" className="danger fit" onClick={() => onDelete?.(edit.id)} disabled={guardando}>Eliminar caso</button>}
@@ -1497,7 +1649,6 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
     </section>
 
     <aside className="side-stack">
-      <Resumen calculo={calc} facturacion={edit.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} fechaCitaEmbajada={edit.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} />
       <section className="panel">
         <h2>Nuevo seguimiento</h2>
         <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
@@ -1738,11 +1889,12 @@ function ModalNotificacion({ modal, onClose, onConfirm }) {
   </div>;
 }
 
-function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, guardando = false, perfilActual = null }) {
+function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, onResetRoles, guardando = false, perfilActual = null }) {
   const [borrador, setBorrador] = useState(() => normalizarConfiguracion(config));
   const [nuevaAsesora, setNuevaAsesora] = useState('');
   const [usuarioRol, setUsuarioRol] = useState({ nombre: '', email: '', rol: 'asesor', activo: true });
   const [modal, setModal] = useState(null);
+  const existeAdministradorActivo = hayAdministradorActivoGuardado(usuariosSigv);
 
   useEffect(() => {
     setBorrador(normalizarConfiguracion(config));
@@ -1864,6 +2016,13 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, gu
         </div>)}
       </div>
 
+      {!existeAdministradorActivo && <div className="alert-box diagnostic">No hay un Administrador activo guardado. Guarda tu usuario como Administrador o usa Reiniciar roles para corregir el acceso.</div>}
+
+      <div className="actions-row compact">
+        <button type="button" className="danger fit" disabled={guardando} onClick={onResetRoles}>{guardando ? 'Guardando...' : 'Reiniciar roles'}</button>
+        <span className="hint">Regla de seguridad operativa: siempre debe existir al menos un Administrador activo.</span>
+      </div>
+
       <div className="table-wrap mt-small">
         <table>
           <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Acción</th></tr></thead>
@@ -1901,8 +2060,8 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, gu
       </div>
       <div className="actions-row">
         <button type="button" className="primary fit" disabled={guardando} onClick={async () => {
-          await onSaveUsuario?.(usuarioRol);
-          setUsuarioRol({ nombre: '', email: '', rol: 'asesor', activo: true });
+          const guardado = await onSaveUsuario?.(usuarioRol);
+          if (guardado !== false) setUsuarioRol({ nombre: '', email: '', rol: 'asesor', activo: true });
         }}>{guardando ? 'Guardando...' : 'Guardar usuario/rol'}</button>
         <button type="button" className="secondary fit" onClick={() => setUsuarioRol({ nombre: '', email: '', rol: 'asesor', activo: true })}>Limpiar</button>
       </div>

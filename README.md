@@ -85,3 +85,18 @@ Este paquete no debe incluir:
 - `node_modules/`
 - `dist/`
 - `package-lock.json`
+
+
+## Fase 4A.2 - ajustes aplicados
+
+- El resumen automático en el detalle de Casos queda al final del formulario, compacto, como en Nuevo caso.
+- Los nuevos casos usan el consecutivo SIGV: A0001 hasta A9999; luego B0001 hasta B9999, y así sucesivamente con C, D, etc.
+- Se mantiene compatibilidad con IDs anteriores tipo CAS-2026-0001 para calcular el siguiente consecutivo.
+- Se agregó protección anti-bloqueo: si no existe ningún Administrador activo en `usuariosSigv`, el usuario autenticado entra como Administrador provisional para corregir roles.
+- Se agregó botón **Reiniciar roles**: deja el usuario actual como Administrador activo y los demás usuarios como Asesor activo.
+- La interfaz impide guardar cambios que dejen el sistema sin al menos un Administrador activo.
+
+
+## Corrección Fase 4A.2
+
+- Se ajustó el consecutivo de casos para que el primer caso sea `A0001` y todos los IDs mantengan 4 dígitos después de la letra: `A0001` a `A9999`, luego `B0001` a `B9999`, y así sucesivamente.
