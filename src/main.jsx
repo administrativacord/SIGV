@@ -1,23 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
-import { auth, db } from './firebase';
+import { auth } from './firebase';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
 import {
-  collection,
-  doc,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-} from 'firebase/firestore';
+  diagnosticarFirestoreRest,
+  guardarDocumentoRest,
+  listarColeccionRest,
+  obtenerDocumentoRest,
+} from './firestoreRest';
 
-const APP_VERSION = 'Fase 3.1 Web · Firebase Firestore estable';
+const APP_VERSION = 'Fase 3.2 Web · Firestore REST seguro';
 
 function conTiempoLimite(promesa, ms, mensaje) {
   let timer;
@@ -558,6 +555,7 @@ function App() {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [errorConexion, setErrorConexion] = useState('');
+  const [diagnostico, setDiagnostico] = useState('');
 
   useEffect(() => {
     const cancelar = onAuthStateChanged(auth, user => {
@@ -575,85 +573,61 @@ function App() {
   useEffect(() => {
     if (!usuarioAuth) return undefined;
     let activo = true;
-    let casosRespondieron = false;
 
-    setCargando(true);
-    setErrorConexion('');
+    async function cargarDesdeFirestore() {
+      setCargando(true);
+      setErrorConexion('');
+      setDiagnostico('');
+      try {
+        const [configRemota, casosRemotos] = await Promise.all([
+          conTiempoLimite(obtenerDocumentoRest('configuracion', 'general'), 18000, 'No respondió la configuración de Firestore.'),
+          conTiempoLimite(listarColeccionRest('casos'), 18000, 'No respondió la colección de casos de Firestore.'),
+        ]);
 
-    const finalizarCarga = () => {
-      if (!activo) return;
-      setCargando(false);
-    };
+        if (!activo) return;
 
-    const timerCarga = setTimeout(() => {
-      if (!activo || casosRespondieron) return;
-      const respaldo = localStorage.getItem('sigv_casos_fase3_backup');
-      if (respaldo) {
-        try {
-          setCasos(JSON.parse(respaldo).map(c => prepararCasoGuardado(c, config)));
-        } catch (error) {
-          console.error('Error leyendo respaldo local:', error);
+        const configLimpia = normalizarConfiguracion(configRemota || configuracionBase);
+        setConfigState(configLimpia);
+        localStorage.setItem('sigv_configuracion_fase3_backup', JSON.stringify(configLimpia));
+
+        const lista = casosRemotos
+          .map(item => prepararCasoGuardado(item, configLimpia))
+          .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+        setCasos(lista);
+        localStorage.setItem('sigv_casos_fase3_backup', JSON.stringify(lista));
+      } catch (error) {
+        if (!activo) return;
+        console.error('Error cargando Firestore por REST:', error);
+
+        const respaldoConfig = localStorage.getItem('sigv_configuracion_fase3_backup');
+        const respaldoCasos = localStorage.getItem('sigv_casos_fase3_backup');
+
+        if (respaldoConfig) {
+          try {
+            setConfigState(normalizarConfiguracion(JSON.parse(respaldoConfig)));
+          } catch (parseError) {
+            console.error('Error leyendo respaldo de configuración:', parseError);
+          }
         }
-      }
-      setErrorConexion('Firestore está tardando demasiado en responder. Revisa que Firestore Database esté creado, que las reglas estén publicadas y que la red no esté bloqueando Firestore. La pantalla se desbloqueó para que puedas seguir revisando la app.');
-      finalizarCarga();
-    }, 12000);
 
-    const configuracionRef = doc(db, 'configuracion', 'general');
-    const cancelarConfig = onSnapshot(configuracionRef, snapshot => {
-      if (!activo) return;
-      if (snapshot.exists()) {
-        const limpia = normalizarConfiguracion(snapshot.data());
-        setConfigState(limpia);
-        localStorage.setItem('sigv_configuracion_fase3_backup', JSON.stringify(limpia));
-      } else {
-        setConfigState(normalizarConfiguracion(configuracionBase));
-      }
-    }, error => {
-      if (!activo) return;
-      console.error('Error cargando configuración:', error);
-      const respaldo = localStorage.getItem('sigv_configuracion_fase3_backup');
-      if (respaldo) {
-        try {
-          setConfigState(normalizarConfiguracion(JSON.parse(respaldo)));
-        } catch (parseError) {
-          console.error('Error leyendo respaldo de configuración:', parseError);
+        if (respaldoCasos) {
+          try {
+            setCasos(JSON.parse(respaldoCasos).map(c => prepararCasoGuardado(c, config)));
+          } catch (parseError) {
+            console.error('Error leyendo respaldo de casos:', parseError);
+          }
         }
-      }
-      setErrorConexion(`No se pudo cargar la configuración desde Firestore: ${error.message || error.code || 'error desconocido'}. Revisa que Firestore esté creado y que las reglas permitan acceso a usuarios autenticados.`);
-    });
 
-    const casosRef = query(collection(db, 'casos'), orderBy('createdAtMs', 'desc'));
-    const cancelarCasos = onSnapshot(casosRef, snapshot => {
-      if (!activo) return;
-      casosRespondieron = true;
-      clearTimeout(timerCarga);
-      const lista = snapshot.docs.map(item => prepararCasoGuardado({ id: item.id, ...item.data() }, config));
-      setCasos(lista);
-      localStorage.setItem('sigv_casos_fase3_backup', JSON.stringify(lista));
-      finalizarCarga();
-    }, error => {
-      if (!activo) return;
-      casosRespondieron = true;
-      clearTimeout(timerCarga);
-      console.error('Error cargando casos:', error);
-      const respaldo = localStorage.getItem('sigv_casos_fase3_backup');
-      if (respaldo) {
-        try {
-          setCasos(JSON.parse(respaldo).map(c => prepararCasoGuardado(c, config)));
-        } catch (parseError) {
-          console.error('Error leyendo respaldo de casos:', parseError);
-        }
+        setErrorConexion(`No se pudo cargar Firestore. Detalle: ${error.message || error.code || 'error desconocido'}. Verifica que Cloud Firestore esté creado en modo nativo, que las reglas estén publicadas y que la red permita firestore.googleapis.com.`);
+      } finally {
+        if (activo) setCargando(false);
       }
-      finalizarCarga();
-      setErrorConexion(`No se pudieron cargar los casos desde Firestore: ${error.message || error.code || 'error desconocido'}. Revisa que Firestore esté creado, que las reglas estén publicadas y que permitan acceso a usuarios autenticados.`);
-    });
+    }
+
+    cargarDesdeFirestore();
 
     return () => {
       activo = false;
-      clearTimeout(timerCarga);
-      cancelarConfig();
-      cancelarCasos();
     };
   }, [usuarioAuth]);
 
@@ -685,6 +659,18 @@ function App() {
     await signOut(auth);
     setVista('dashboard');
     setCasoAbiertoId(null);
+  }
+
+  async function ejecutarDiagnosticoFirestore() {
+    try {
+      setDiagnostico('Ejecutando prueba de conexión con Firestore...');
+      const resultado = await diagnosticarFirestoreRest();
+      setDiagnostico(`Conexión Firestore OK por REST. Tiempo aproximado: ${resultado.ms} ms.`);
+      setErrorConexion('');
+    } catch (error) {
+      console.error('Diagnóstico Firestore:', error);
+      setDiagnostico(`Diagnóstico Firestore falló: ${error.message || error.code || 'error desconocido'}.`);
+    }
   }
 
   function validarFormulario() {
@@ -750,11 +736,11 @@ function App() {
 
     try {
       setGuardando(true);
-      await conTiempoLimite(setDoc(doc(db, 'casos', id), {
+      await conTiempoLimite(guardarDocumentoRest('casos', id, {
         ...nuevo,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }), 15000, 'Firestore no respondió al guardar el caso en 15 segundos.');
+        createdAtIso: new Date().toISOString(),
+        updatedAtIso: new Date().toISOString(),
+      }), 20000, 'Firestore no respondió al guardar el caso en 20 segundos.');
       setCasos(prev => [nuevo, ...prev.filter(c => c.id !== id)]);
       setForm(inicialFormulario());
       setCasoAbiertoId(id);
@@ -808,10 +794,10 @@ function App() {
 
     try {
       setGuardando(true);
-      await conTiempoLimite(setDoc(doc(db, 'casos', actualizado.id), {
+      await conTiempoLimite(guardarDocumentoRest('casos', actualizado.id, {
         ...actualizado,
-        updatedAt: serverTimestamp(),
-      }, { merge: true }), 15000, 'Firestore no respondió al actualizar el caso en 15 segundos.');
+        updatedAtIso: new Date().toISOString(),
+      }), 20000, 'Firestore no respondió al actualizar el caso en 20 segundos.');
       setCasos(prev => prev.map(c => c.id === actualizado.id ? actualizado : c));
       setCasoAbiertoId(actualizado.id);
     } catch (error) {
@@ -826,12 +812,12 @@ function App() {
     const limpia = normalizarConfiguracion(nuevaConfig);
     try {
       setGuardando(true);
-      await conTiempoLimite(setDoc(doc(db, 'configuracion', 'general'), {
+      await conTiempoLimite(guardarDocumentoRest('configuracion', 'general', {
         ...limpia,
-        updatedAt: serverTimestamp(),
+        updatedAtIso: new Date().toISOString(),
         updatedAtMs: Date.now(),
         actualizadoPor: usuarioAuth?.email || 'Sistema',
-      }, { merge: true }), 15000, 'Firestore no respondió al guardar la configuración en 15 segundos.');
+      }), 20000, 'Firestore no respondió al guardar la configuración en 20 segundos.');
       setConfigState(limpia);
       localStorage.setItem('sigv_configuracion_fase3_backup', JSON.stringify(limpia));
     } catch (error) {
@@ -878,8 +864,10 @@ function App() {
         <span className="pill ok">Firebase conectado</span>
         <small>{usuarioAuth?.email}</small>
         {guardando && <small>Guardando cambios...</small>}
+        <button className="mini-button" type="button" onClick={ejecutarDiagnosticoFirestore}>Probar Firestore</button>
       </div>
 
+      {diagnostico && <div className="alert-box diagnostic">{diagnostico}</div>}
       {errorConexion && <div className="alert-box">{errorConexion}</div>}
       {cargando && <div className="empty">Cargando información desde Firestore...</div>}
 

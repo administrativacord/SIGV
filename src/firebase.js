@@ -2,7 +2,7 @@ import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore } from 'firebase/firestore';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: 'AIzaSyDdzik_U-S1z0YyVSvvNi4AzIkBjrydK5I',
   authDomain: 'sigv-44772.firebaseapp.com',
   projectId: 'sigv-44772',
@@ -20,6 +20,7 @@ try {
   firestoreInstance = initializeFirestore(app, {
     // Mejora la estabilidad de Firestore en redes corporativas o navegadores
     // donde el canal normal de streaming puede quedarse esperando respuesta.
+    experimentalForceLongPolling: true,
     experimentalAutoDetectLongPolling: true,
   });
 } catch (error) {

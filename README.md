@@ -1,4 +1,4 @@
-# SIGV Web - Fase 3.1 Firebase Firestore
+# SIGV Web - Fase 3.2 Firebase Firestore REST seguro
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
@@ -9,12 +9,12 @@ Esta versión deja de depender del almacenamiento local como fuente principal y 
 ## Funcionalidades incluidas
 
 - Login real con Firebase Authentication usando correo y contraseña.
-- Lectura en tiempo real de casos desde Firestore.
+- Carga de casos desde Firestore usando REST API autenticada para evitar bloqueos del canal en tiempo real.
 - Creación de nuevos casos en la colección `casos`.
 - Edición y seguimiento de casos directamente en Firestore.
 - Configuración guardada en Firestore en `configuracion/general`.
 - Respaldo local automático solo como apoyo si la conexión falla temporalmente.
-- Indicador visual de conexión Firebase y usuario autenticado.
+- Indicador visual de conexión Firebase, usuario autenticado y botón de diagnóstico “Probar Firestore”.
 - Reglas básicas de Firestore incluidas en `firestore.rules`.
 - Mantiene los ajustes de Fase 2:
   - Email opcional.
@@ -111,3 +111,25 @@ Si el login funciona pero no aparecen casos, revisar en Firebase Console:
 2. Las reglas del archivo firestore.rules deben estar publicadas.
 3. El usuario debe iniciar sesión con Authentication > Email/Password.
 4. Al crear un caso debe aparecer un documento en la colección casos.
+
+
+## Corrección Fase 3.2
+
+Esta versión cambia la carga principal de Firestore a una conexión REST autenticada. Esto ayuda cuando el SDK web de Firestore se queda esperando respuesta por el canal de tiempo real/WebChannel en algunas redes corporativas, antivirus, proxies o navegadores.
+
+Cambios aplicados:
+
+- La app ya no depende de `onSnapshot` para cargar casos.
+- La lectura de `casos` y `configuracion/general` se realiza por REST con token del usuario autenticado.
+- Guardar caso, actualizar caso y guardar configuración también usan REST autenticado.
+- Se agregó botón **Probar Firestore** para crear un documento de diagnóstico en `__diagnostico__/conexion`.
+- Se agregó permiso temporal para la colección `__diagnostico__` en `firestore.rules`.
+- Firestore SDK conserva `experimentalForceLongPolling`, pero la operación principal queda por REST para mayor estabilidad.
+
+Después de publicar estas reglas, al presionar **Probar Firestore** debe aparecer un documento en:
+
+```text
+Firestore Database > Datos > __diagnostico__ > conexion
+```
+
+Si el diagnóstico falla con error 403, el problema son las reglas. Si falla con error 404 o indica base no encontrada, falta crear Cloud Firestore Database. Si queda sin responder, la red está bloqueando `firestore.googleapis.com`.

@@ -19,5 +19,9 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if signedIn() && request.auth.uid == userId;
     }
+
+    match /__diagnostico__/{documentoId} {
+      allow read, write: if signedIn();
+    }
   }
 }
