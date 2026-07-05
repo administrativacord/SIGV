@@ -1,9 +1,17 @@
-# SIGV Web - Fase 2.8 Casos con múltiples integrantes
+# SIGV Web - Fase 2.9 Email opcional y descuentos por cantidad
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
 ## Ajustes aplicados en esta versión
 
+- En **Nuevo caso**, el email de los clientes/integrantes dejó de ser obligatorio.
+- En **Casos**, al editar un caso también se permite guardar integrantes sin email, manteniendo obligatorio solo nombre y teléfono.
+- En **Nuevo caso**, se quitó la columna lateral de **Resumen automático** para dejar el formulario más limpio y amplio.
+- El **Resumen automático** ahora queda al final del formulario en formato compacto.
+- Se agregó descuento automático por cantidad de integrantes sobre la facturación de AmCham:
+  - Desde **3 integrantes**: 10% de descuento.
+  - Desde **5 integrantes**: 15% de descuento.
+- El descuento se aplica únicamente sobre las tarifas de asesoría de AmCham, no sobre valores informativos como FedEx, derechos consulares o envío de documentación.
 - Se agregó el nuevo paso **2. Cantidad** debajo de **1. Asesor responsable**.
 - El campo de cantidad permite indicar cuántos integrantes tiene el caso, por ejemplo un grupo familiar.
 - Según la cantidad seleccionada, el sistema despliega para cada integrante:
@@ -21,7 +29,7 @@ Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
   8. Fecha Cita embajada.
 - **Observaciones y seguimiento** se mantiene sin numeración, justo antes de **Estado del Proceso**.
 - **Estado del Proceso** se mantiene al final y sigue siendo la única forma segura de cambiar el estado manualmente.
-- El cálculo de **Facturación AmCham** ahora suma las tarifas de todos los integrantes del caso.
+- El cálculo de **Facturación AmCham** suma las tarifas de todos los integrantes del caso y aplica el descuento por cantidad cuando corresponda.
 - El conteo de documentos y el estado automático se calculan tomando en cuenta todos los integrantes.
 - En **Casos**, la búsqueda permite encontrar cualquier integrante del caso, no solo el principal.
 - Las plantillas ahora identifican documentos pendientes por integrante.

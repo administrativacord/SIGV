@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const APP_VERSION = 'Fase 2.8 Web · Casos con múltiples integrantes';
+const APP_VERSION = 'Fase 2.9 Web · Email opcional y descuentos por cantidad';
 
 const tarifasBase = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -313,6 +313,19 @@ function normalizarEstadoProceso(estado = '') {
   return equivalencias[limpio] || '';
 }
 
+function porcentajeDescuentoPorCantidad(cantidad = 1) {
+  const totalIntegrantes = Number(cantidad) || 1;
+  if (totalIntegrantes >= 5) return 0.15;
+  if (totalIntegrantes >= 3) return 0.10;
+  return 0;
+}
+
+function textoDescuentoPorCantidad(cantidad = 1) {
+  const porcentaje = porcentajeDescuentoPorCantidad(cantidad);
+  if (!porcentaje) return 'No aplica';
+  return `${Math.round(porcentaje * 100)}% por ${cantidad} integrantes`;
+}
+
 function estadoAutomaticoProceso(requeridos, data = {}) {
   const detalles = data.detalleIntegrantes || normalizarIntegrantes(data).map((integrante, indice) => {
     const tipoSolicitud = integrante.tipoSolicitudKey || integrante.tipoSolicitud;
@@ -364,7 +377,10 @@ function calcularCaso(data, config = configuracionBase) {
   const configuracion = normalizarConfiguracion(config);
   const integrantes = normalizarIntegrantes(data);
   const detalleIntegrantes = integrantes.map((integrante, indice) => calcularIntegrante(integrante, configuracion, indice));
-  const totalPesos = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.tarifa) || 0), 0);
+  const subtotalAsesoria = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.tarifa) || 0), 0);
+  const porcentajeDescuento = porcentajeDescuentoPorCantidad(detalleIntegrantes.length);
+  const valorDescuento = Math.round(subtotalAsesoria * porcentajeDescuento);
+  const totalPesos = Math.max(0, subtotalAsesoria - valorDescuento);
   const valorInformativoEnvioBogota = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.valorInformativoEnvioBogota) || 0), 0);
   const fedex = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.fedex) || 0), 0);
   const requiereDerechos = detalleIntegrantes.some(detalle => detalle.requiereDerechos);
@@ -374,7 +390,11 @@ function calcularCaso(data, config = configuracionBase) {
   const estadoManualNormalizado = normalizarEstadoProceso(data.estadoManual);
   const estado = estadoManualNormalizado || estadoAutomaticoProceso(requeridos, { detalleIntegrantes });
   return {
-    tarifa: totalPesos,
+    tarifa: subtotalAsesoria,
+    subtotalAsesoria,
+    porcentajeDescuento,
+    valorDescuento,
+    descuentoDescripcion: textoDescuentoPorCantidad(detalleIntegrantes.length),
     valorInformativoEnvioBogota,
     adicionalRenovacion: valorInformativoEnvioBogota,
     requiereDerechos,
@@ -546,7 +566,6 @@ function App() {
       const numero = indice + 1;
       if (!integrante.nombre.trim()) return `Debes ingresar el nombre completo del integrante ${numero}.`;
       if (!integrante.telefono.trim()) return `Debes ingresar el teléfono del integrante ${numero}.`;
-      if (!integrante.email.trim()) return `Debes ingresar el email del integrante ${numero}.`;
       const tarifa = config.tarifas[integrante.tipoCliente]?.[integrante.tipoSolicitud];
       if (tarifa === null || tarifa === undefined) return `La combinación seleccionada para el integrante ${numero} no aplica. Cambia el tipo de cliente o solicitud.`;
     }
@@ -736,7 +755,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config }) {
     setForm({ ...form, cantidad: nuevosIntegrantes.length, integrantes: nuevosIntegrantes, estadoManual: '' });
   }
 
-  return <form className="case-layout" onSubmit={guardarCaso}>
+  return <form className="case-layout single-case-layout" onSubmit={guardarCaso}>
     <section className="panel">
       <h2>1. Asesor responsable</h2>
       <AsesorSelect value={form.asesor} onChange={v => setForm({ ...form, asesor: v })} asesoras={config.asesoras} />
@@ -790,10 +809,11 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config }) {
           {estadosProceso.map(estado => <option key={estado} value={estado}>{estado}</option>)}
         </select>
       </label>
+
+      <Resumen calculo={calculo} facturacion={form.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} compacto />
+
       <button className="primary" type="submit">Guardar caso</button>
     </section>
-
-    <Resumen calculo={calculo} facturacion={form.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} />
   </form>;
 }
 
@@ -821,7 +841,7 @@ function IntegrantesSecciones({ integrantes, onChange, config }) {
           <Field required label="Nombre completo" value={integrante.nombre} onChange={v => actualizarIntegrante(indice, { nombre: v })} />
           <Field required label="Teléfono" value={integrante.telefono} onChange={v => actualizarIntegrante(indice, { telefono: v })} />
         </div>
-        <Field required label="Email" type="email" value={integrante.email} onChange={v => actualizarIntegrante(indice, { email: v })} />
+        <Field label="Email" type="email" value={integrante.email} onChange={v => actualizarIntegrante(indice, { email: v })} />
       </div>)}
     </div>
 
@@ -919,7 +939,7 @@ function CaseTable({ casos, onOpen, compacto = false }) {
       <tbody>{casos.map(c => <tr key={c.id}>
         <td><strong>{c.id}</strong></td>
         <td>{c.asesor}</td>
-        <td>{textoClienteCaso(c)}<br /><small>{normalizarIntegrantes(c).length} integrante{normalizarIntegrantes(c).length === 1 ? '' : 's'} · {c.email}</small></td>
+        <td>{textoClienteCaso(c)}<br /><small>{normalizarIntegrantes(c).length} integrante{normalizarIntegrantes(c).length === 1 ? '' : 's'}{c.email ? ` · ${c.email}` : ''}</small></td>
         {!compacto && <td>{c.telefono}</td>}
         <td>{textoSolicitudesCaso(c)}<br /><small>{textoClientesCaso(c)}</small></td>
         <td>{c.documentos}</td>
@@ -955,8 +975,8 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
     }
     for (const [indice, integrante] of integrantes.entries()) {
       const numero = indice + 1;
-      if (!integrante.nombre.trim() || !integrante.telefono.trim() || !integrante.email.trim()) {
-        alert(`Nombre, teléfono y email son obligatorios para el integrante ${numero}.`);
+      if (!integrante.nombre.trim() || !integrante.telefono.trim()) {
+        alert(`Nombre y teléfono son obligatorios para el integrante ${numero}.`);
         return;
       }
       const tarifa = config.tarifas[integrante.tipoCliente]?.[integrante.tipoSolicitud];
@@ -1171,7 +1191,7 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
     <div className="actions-row compact">
       <button type="button" className="secondary fit" onClick={copiarDatosCliente}>Copiar datos del cliente</button>
       <button type="button" className="primary fit" onClick={copiarDatosFacturacion}>{copiadoFacturacion ? 'Datos copiados' : 'Copiar datos Facturación'}</button>
-      <span className="hint">El valor corresponde a la facturación AmCham del caso. Si hay varios integrantes, suma las asesorías configuradas para cada uno.</span>
+      <span className="hint">El valor corresponde a la facturación AmCham del caso. Si hay descuentos por cantidad, ya quedan aplicados en el total.</span>
     </div>
     <div className="two-cols">
       <Field label="Nombre" value={facturacion.nombre} onChange={v => actualizar('nombre', v)} />
@@ -1207,28 +1227,32 @@ function Checklist({ tipoSolicitud, documentos, onChange }) {
   </div>;
 }
 
-function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada, cantidadIntegrantes = 1 }) {
+function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada, cantidadIntegrantes = 1, compacto = false }) {
   const facturacionNormalizada = normalizarFacturacion(facturacion, { tipoClienteKey }, config, calculo.totalPesos);
-  return <section className="panel summary">
+  const clases = compacto ? 'panel summary summary-compact' : 'panel summary';
+  return <section className={clases}>
     <h2>Resumen automático</h2>
-    <Line label="Cantidad de integrantes" value={calculo.cantidad || cantidadIntegrantes || 1} />
-    <Line label="Valor asesoría AmCham" value={moneda(calculo.tarifa)} />
-    <div className="total"><span>Total a facturar por AmCham</span><strong>{moneda(calculo.totalPesos)}</strong></div>
-    {calculo.detalleIntegrantes?.length > 1 && <div className="info-box muted">
+    <div className="summary-grid">
+      <Line label="Integrantes" value={calculo.cantidad || cantidadIntegrantes || 1} />
+      <Line label="Subtotal asesoría" value={moneda(calculo.subtotalAsesoria ?? calculo.tarifa)} />
+      <Line label="Descuento por cantidad" value={calculo.valorDescuento ? `${calculo.descuentoDescripcion} · -${moneda(calculo.valorDescuento)}` : 'No aplica'} />
+      <div className="total"><span>Total a facturar por AmCham</span><strong>{moneda(calculo.totalPesos)}</strong></div>
+    </div>
+    {!compacto && calculo.detalleIntegrantes?.length > 1 && <div className="info-box muted">
       <strong>Detalle por integrante</strong>
       {calculo.detalleIntegrantes.map(detalle => <Line key={detalle.id} label={`Integrante ${detalle.numero} · ${detalle.nombre || textoSolicitud(detalle.tipoSolicitud)}`} value={`${textoSolicitud(detalle.tipoSolicitud)} · ${moneda(detalle.tarifa)}`} />)}
     </div>}
     <div className="info-box">
       <strong>Valores informativos para el cliente</strong>
-      <p>Estos valores no ingresan a AmCham y no hacen parte de nuestra facturación. Se muestran únicamente para que el cliente los tenga en cuenta en su presupuesto y los pague directamente cuando corresponda.</p>
-      <Line label="Envío documentación Bogotá / Renovación" value={calculo.valorInformativoEnvioBogota ? moneda(calculo.valorInformativoEnvioBogota) : 'No aplica'} />
-      <Line label="FedEx devolución pasaporte" value={calculo.fedex ? moneda(calculo.fedex) : 'No aplica / pendiente por definir'} />
+      {!compacto && <p>Estos valores no ingresan a AmCham y no hacen parte de nuestra facturación. Se muestran únicamente para que el cliente los tenga en cuenta en su presupuesto y los pague directamente cuando corresponda.</p>}
+      <Line label="Envío Bogotá / Renovación" value={calculo.valorInformativoEnvioBogota ? moneda(calculo.valorInformativoEnvioBogota) : 'No aplica'} />
+      <Line label="FedEx" value={calculo.fedex ? moneda(calculo.fedex) : 'No aplica / pendiente'} />
       <Line label="Derechos consulares" value={calculo.requiereDerechos ? `USD ${calculo.derechosConsularesUsd}` : 'No aplica'} />
     </div>
     <div className={claseEstado(calculo.estado)}>{calculo.estado}</div>
-    <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. El estado del proceso se actualiza según los documentos recibidos de todos los integrantes o la selección manual de la asesora.</p>
+    <p className="hint">Documentos: {calculo.completos}/{calculo.requeridos.length}. El estado se calcula con todos los integrantes o la selección manual.</p>
     {(fechaAsesoria || horaAsesoria) && <p className="hint"><strong>Asesoría:</strong> {fechaAsesoria || 'sin fecha'} {horaAsesoria || ''}</p>}
-    {facturacion && <div className="info-box muted">
+    {!compacto && facturacion && <div className="info-box muted">
       <strong>Facturación</strong>
       <Line label="Nombre" value={facturacionNormalizada.nombre || 'Pendiente'} />
       <Line label="Tipo de trámite" value={textoSolicitud(facturacionNormalizada.tipoTramite)} />
