@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const APP_VERSION = 'Fase 2.5 Web · Facturación y cita embajada';
+const APP_VERSION = 'Fase 2.6 Web · Configuración manual y copia facturación';
 
 const tarifasBase = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -30,27 +30,14 @@ const configuracionBase = {
 function crearFacturacion(tipoTramite = 'primeraVez') {
   return {
     nombre: '',
-    identificacion: '',
+    cedulaNit: '',
     telefono: '',
     direccion: '',
     correo: '',
     tipoTramite,
-    medioPago: 'Transferencia',
+    medioPago: '',
+    valor: 0,
   };
-}
-
-function normalizarFacturacion(facturacion = {}, tipoTramiteBase = 'primeraVez') {
-  return {
-    ...crearFacturacion(tipoTramiteBase),
-    ...facturacion,
-    tipoTramite: facturacion.tipoTramite || tipoTramiteBase,
-    medioPago: facturacion.medioPago || 'Transferencia',
-  };
-}
-
-function calcularValorFacturacion(tipoCliente, tipoTramite, config = configuracionBase) {
-  const configuracion = normalizarConfiguracion(config);
-  return configuracion.tarifas?.[tipoCliente]?.[tipoTramite] ?? null;
 }
 
 const tiposSolicitud = [
@@ -275,6 +262,44 @@ function calcularCaso(data, config = configuracionBase) {
   return { tarifa, valorInformativoEnvioBogota, adicionalRenovacion: valorInformativoEnvioBogota, requiereDerechos, fedex, totalPesos, requeridos, completos, documentosCompletos, estado, derechosConsularesUsd: costos.derechosConsularesUsd };
 }
 
+function calcularValorFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', config = configuracionBase) {
+  const configuracion = normalizarConfiguracion(config);
+  const tipoTramite = facturacion.tipoTramite || 'primeraVez';
+  const valor = configuracion.tarifas[tipoClienteKey]?.[tipoTramite];
+  return valor === null || valor === undefined ? null : Number(valor);
+}
+
+function normalizarFacturacion(facturacion = {}, data = {}, config = configuracionBase) {
+  const tipoTramite = facturacion.tipoTramite || data.tipoSolicitudKey || data.tipoSolicitud || 'primeraVez';
+  const tipoClienteKey = data.tipoClienteKey || data.tipoCliente || 'afiliado';
+  return {
+    nombre: facturacion.nombre || '',
+    cedulaNit: facturacion.cedulaNit || '',
+    telefono: facturacion.telefono || '',
+    direccion: facturacion.direccion || '',
+    correo: facturacion.correo || '',
+    tipoTramite,
+    medioPago: facturacion.medioPago || '',
+    valor: calcularValorFacturacion({ tipoTramite }, tipoClienteKey, config) || 0,
+  };
+}
+
+function generarTextoFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', tipoSolicitudKey = 'primeraVez', config = configuracionBase) {
+  const datos = normalizarFacturacion(facturacion, { tipoClienteKey, tipoSolicitudKey }, config);
+  const valor = calcularValorFacturacion(datos, tipoClienteKey, config);
+  return [
+    'DATOS DE FACTURACIÓN',
+    `Nombre: ${datos.nombre || 'Pendiente'}`,
+    `Cédula o NIT: ${datos.cedulaNit || 'Pendiente'}`,
+    `Teléfono: ${datos.telefono || 'Pendiente'}`,
+    `Dirección: ${datos.direccion || 'Pendiente'}`,
+    `Correo: ${datos.correo || 'Pendiente'}`,
+    `Tipo de trámite: ${textoSolicitud(datos.tipoTramite)}`,
+    `Medio de pago: ${datos.medioPago || 'Pendiente'}`,
+    `Valor: ${valor === null || valor === undefined ? 'No aplica' : moneda(valor)}`,
+  ].join('\n');
+}
+
 function textoSolicitud(id) {
   return tiposSolicitud.find(t => t.id === id)?.label || id;
 }
@@ -296,7 +321,7 @@ const casosIniciales = [
     fedex: '', total: 305000, estado: 'Pendiente Agendamiento de Asesoría', documentos: '6/6',
     documentosObj: { foto: true, pasaporte: true, ds160: true, pagoAsesoria: true, visaAnterior: true, autorizacionEnvio: true },
     observacion: 'Pago validado. Pendiente agendamiento de asesoría.', seguimiento: 'Pendiente asignar horario de asesoría.',
-    fechaAsesoria: '', horaAsesoria: '', facturacion: normalizarFacturacion({}, 'renovacion'), fechaCitaEmbajada: '', estadoManual: '',
+    fechaAsesoria: '', horaAsesoria: '', facturacion: { nombre: 'María Gómez', cedulaNit: '', telefono: '3001234567', direccion: '', correo: 'maria@email.com', tipoTramite: 'renovacion', medioPago: 'Transferencia', valor: 150000 }, fechaCitaEmbajada: '', estadoManual: '',
     historial: [
       evento('Creación', 'Caso creado con documentos completos para renovación.', 'Milena'),
       evento('Seguimiento', 'Pendiente asignar horario de asesoría.', 'Milena'),
@@ -308,7 +333,7 @@ const casosIniciales = [
     fedex: '', total: 190000, estado: 'Pendiente Documentación', documentos: '2/4',
     documentosObj: { foto: true, pasaporte: true, ds160: false, pagoAsesoria: false },
     observacion: 'Falta DS-160 y soporte de pago.', seguimiento: 'Cliente enviará documentos pendientes.',
-    fechaAsesoria: '', horaAsesoria: '', facturacion: normalizarFacturacion({}, 'primeraVez'), fechaCitaEmbajada: '', estadoManual: '',
+    fechaAsesoria: '', horaAsesoria: '', facturacion: { nombre: 'Carlos Pérez', cedulaNit: '', telefono: '3159876543', direccion: '', correo: 'carlos@email.com', tipoTramite: 'primeraVez', medioPago: '', valor: 190000 }, fechaCitaEmbajada: '', estadoManual: '',
     historial: [evento('Creación', 'Caso creado. Falta DS-160 y soporte de pago.', 'Ximena')],
   },
 ];
@@ -325,13 +350,13 @@ function prepararCasoGuardado(caso, config = configuracionBase) {
   return {
     ...caso,
     estadoManual: normalizarEstadoProceso(caso.estadoManual),
-    facturacion: normalizarFacturacion(caso.facturacion, caso.tipoSolicitudKey),
-    fechaCitaEmbajada: caso.fechaCitaEmbajada || '',
     tipoCliente: configuracion.tarifas[caso.tipoClienteKey]?.label || caso.tipoCliente,
     tipoSolicitud: textoSolicitud(caso.tipoSolicitudKey),
     total: calc.totalPesos,
     estado: calc.estado,
     documentos: `${calc.completos}/${calc.requeridos.length}`,
+    facturacion: normalizarFacturacion(caso.facturacion, { ...caso, tipoClienteKey: caso.tipoClienteKey, tipoSolicitudKey: caso.tipoSolicitudKey }, configuracion),
+    fechaCitaEmbajada: caso.fechaCitaEmbajada || '',
   };
 }
 
@@ -383,7 +408,14 @@ function App() {
   function cambiarTipoSolicitud(tipoSolicitud) {
     const documentosActuales = form.documentos || {};
     const nuevosDocs = Object.fromEntries(documentosRequeridos(tipoSolicitud).map(id => [id, !!documentosActuales[id]]));
-    setForm({ ...form, tipoSolicitud, fedex: '', documentos: nuevosDocs, facturacion: { ...form.facturacion, tipoTramite: tipoSolicitud }, estadoManual: '' });
+    setForm({
+      ...form,
+      tipoSolicitud,
+      fedex: '',
+      documentos: nuevosDocs,
+      facturacion: { ...(form.facturacion || crearFacturacion(tipoSolicitud)), tipoTramite: tipoSolicitud },
+      estadoManual: '',
+    });
   }
 
   function guardarCaso(e) {
@@ -412,7 +444,7 @@ function App() {
       seguimiento: form.seguimiento || 'Caso creado. Pendiente seguimiento.',
       fechaAsesoria: form.fechaAsesoria,
       horaAsesoria: form.horaAsesoria,
-      facturacion: normalizarFacturacion(form.facturacion, form.tipoSolicitud),
+      facturacion: normalizarFacturacion(form.facturacion, { tipoClienteKey: form.tipoCliente, tipoSolicitudKey: form.tipoSolicitud }, config),
       fechaCitaEmbajada: form.fechaCitaEmbajada,
       estadoManual: form.estadoManual,
       historial: [
@@ -442,11 +474,11 @@ function App() {
       ...casoActualizado,
       tipoCliente: config.tarifas[casoActualizado.tipoClienteKey].label,
       tipoSolicitud: textoSolicitud(casoActualizado.tipoSolicitudKey),
-      facturacion: normalizarFacturacion(casoActualizado.facturacion, casoActualizado.tipoSolicitudKey),
-      fechaCitaEmbajada: casoActualizado.fechaCitaEmbajada || '',
       total: calc.totalPesos,
       estado: calc.estado,
       documentos: `${calc.completos}/${calc.requeridos.length}`,
+      facturacion: normalizarFacturacion(casoActualizado.facturacion, { tipoClienteKey: casoActualizado.tipoClienteKey, tipoSolicitudKey: casoActualizado.tipoSolicitudKey }, config),
+      fechaCitaEmbajada: casoActualizado.fechaCitaEmbajada || '',
       historial: [...(casoActualizado.historial || []), evento('Actualización', motivo, casoActualizado.asesor || 'Sistema')],
     };
     setCasos(prev => prev.map(c => c.id === actualizado.id ? actualizado : c));
@@ -591,22 +623,26 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, 
       </div>
 
       <h2>6. Facturación</h2>
-      <FacturacionForm
-        value={form.facturacion}
-        tipoClienteKey={form.tipoCliente}
-        config={config}
+      <FacturacionFields
+        data={form.facturacion}
         onChange={facturacion => setForm({ ...form, facturacion })}
+        tipoClienteKey={form.tipoCliente}
+        tipoSolicitudKey={form.tipoSolicitud}
+        datosCliente={{ nombre: form.nombre, telefono: form.telefono, correo: form.email }}
+        config={config}
       />
 
       <h2>7. Fecha Cita embajada</h2>
-      <CitaEmbajadaPanel value={form.fechaCitaEmbajada} onChange={fechaCitaEmbajada => setForm({ ...form, fechaCitaEmbajada })} />
+      <label>Fecha Cita embajada
+        <input type="date" value={form.fechaCitaEmbajada} onChange={e => setForm({ ...form, fechaCitaEmbajada: e.target.value })} />
+      </label>
 
       <h2>Observaciones y seguimiento</h2>
-      <label>Observación general
+      <label>Observación
         <textarea value={form.observacion} onChange={e => setForm({ ...form, observacion: e.target.value })} placeholder="Ej: pendiente soporte de pago, cliente enviará foto mañana..." />
       </label>
       <label>Seguimiento inicial
-        <textarea value={form.seguimiento} onChange={e => setForm({ ...form, seguimiento: e.target.value })} placeholder="Ej: se llamó al cliente, falta documento, cliente confirma envío..." />
+        <textarea value={form.seguimiento} onChange={e => setForm({ ...form, seguimiento: e.target.value })} placeholder="Ej: se debe llamar al cliente, confirmar documentos o validar pago..." />
       </label>
 
       <h2>Estado del Proceso</h2>
@@ -618,7 +654,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, 
       <button className="primary" type="submit">Guardar caso</button>
     </section>
 
-    <Resumen calculo={calculo} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} />
+    <Resumen calculo={calculo} facturacion={form.facturacion} tipoClienteKey={form.tipoCliente} config={config} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} />
   </form>;
 }
 
@@ -693,14 +729,20 @@ function CaseTable({ casos, onOpen, compacto = false }) {
 }
 
 function DetalleCaso({ caso, onBack, onSave, config }) {
-  const [edit, setEdit] = useState({ ...caso, documentosObj: { ...caso.documentosObj }, facturacion: normalizarFacturacion(caso.facturacion, caso.tipoSolicitudKey), fechaCitaEmbajada: caso.fechaCitaEmbajada || '' });
+  const [edit, setEdit] = useState({ ...caso, documentosObj: { ...caso.documentosObj } });
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
   const calc = calcularCaso({ tipoClienteKey: edit.tipoClienteKey, tipoSolicitudKey: edit.tipoSolicitudKey, fedex: edit.fedex || '', documentosObj: edit.documentosObj, estadoManual: edit.estadoManual }, config);
 
   function cambiarSolicitudDetalle(tipoSolicitudKey) {
     const actuales = edit.documentosObj || {};
     const nuevosDocs = Object.fromEntries(documentosRequeridos(tipoSolicitudKey).map(id => [id, !!actuales[id]]));
-    setEdit({ ...edit, tipoSolicitudKey, documentosObj: nuevosDocs, facturacion: { ...edit.facturacion, tipoTramite: tipoSolicitudKey }, estadoManual: '' });
+    setEdit({
+      ...edit,
+      tipoSolicitudKey,
+      documentosObj: nuevosDocs,
+      facturacion: { ...(edit.facturacion || crearFacturacion(tipoSolicitudKey)), tipoTramite: tipoSolicitudKey },
+      estadoManual: '',
+    });
   }
 
   function guardar(motivo = 'Caso actualizado desde detalle.') {
@@ -799,17 +841,20 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
           <input type="time" value={edit.horaAsesoria || ''} onChange={e => setEdit({ ...edit, horaAsesoria: e.target.value })} />
         </label>
       </div>
-
       <h2>6. Facturación</h2>
-      <FacturacionForm
-        value={edit.facturacion}
-        tipoClienteKey={edit.tipoClienteKey}
-        config={config}
+      <FacturacionFields
+        data={edit.facturacion}
         onChange={facturacion => setEdit({ ...edit, facturacion })}
+        tipoClienteKey={edit.tipoClienteKey}
+        tipoSolicitudKey={edit.tipoSolicitudKey}
+        datosCliente={{ nombre: edit.nombre, telefono: edit.telefono, correo: edit.email }}
+        config={config}
       />
 
       <h2>7. Fecha Cita embajada</h2>
-      <CitaEmbajadaPanel value={edit.fechaCitaEmbajada || ''} onChange={fechaCitaEmbajada => setEdit({ ...edit, fechaCitaEmbajada })} />
+      <label>Fecha Cita embajada
+        <input type="date" value={edit.fechaCitaEmbajada || ''} onChange={e => setEdit({ ...edit, fechaCitaEmbajada: e.target.value })} />
+      </label>
 
       <h2>Observaciones y seguimiento</h2>
       <label>Observación general
@@ -829,7 +874,7 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
     </section>
 
     <aside className="side-stack">
-      <Resumen calculo={calc} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} fechaCitaEmbajada={edit.fechaCitaEmbajada} />
+      <Resumen calculo={calc} facturacion={edit.facturacion} tipoClienteKey={edit.tipoClienteKey} config={config} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} fechaCitaEmbajada={edit.fechaCitaEmbajada} />
       <section className="panel">
         <h2>Nuevo seguimiento</h2>
         <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
@@ -914,6 +959,67 @@ function Historial({ historial }) {
   </section>;
 }
 
+function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, datosCliente = {}, config }) {
+  const [copiadoFacturacion, setCopiadoFacturacion] = useState(false);
+  const facturacion = normalizarFacturacion(data, { tipoClienteKey, tipoSolicitudKey }, config);
+  const valor = calcularValorFacturacion(facturacion, tipoClienteKey, config);
+
+  function actualizar(campo, valorCampo) {
+    onChange(normalizarFacturacion({ ...facturacion, [campo]: valorCampo }, { tipoClienteKey, tipoSolicitudKey }, config));
+  }
+
+  function copiarDatosCliente() {
+    onChange(normalizarFacturacion({
+      ...facturacion,
+      nombre: datosCliente.nombre || facturacion.nombre,
+      telefono: datosCliente.telefono || facturacion.telefono,
+      correo: datosCliente.correo || facturacion.correo,
+      tipoTramite: tipoSolicitudKey || facturacion.tipoTramite,
+    }, { tipoClienteKey, tipoSolicitudKey }, config));
+  }
+
+  async function copiarDatosFacturacion() {
+    const texto = generarTextoFacturacion(facturacion, tipoClienteKey, tipoSolicitudKey, config);
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiadoFacturacion(true);
+      setTimeout(() => setCopiadoFacturacion(false), 1800);
+    } catch {
+      alert('No se pudo copiar automáticamente. Puedes seleccionar los datos manualmente.');
+    }
+  }
+
+  return <div className="facturacion-box">
+    <div className="actions-row compact">
+      <button type="button" className="secondary fit" onClick={copiarDatosCliente}>Copiar datos del cliente</button>
+      <button type="button" className="primary fit" onClick={copiarDatosFacturacion}>{copiadoFacturacion ? 'Datos copiados' : 'Copiar datos Facturación'}</button>
+      <span className="hint">El valor se calcula con las tarifas configuradas y el tipo de trámite seleccionado.</span>
+    </div>
+    <div className="two-cols">
+      <Field label="Nombre" value={facturacion.nombre} onChange={v => actualizar('nombre', v)} />
+      <Field label="Cédula o NIT" value={facturacion.cedulaNit} onChange={v => actualizar('cedulaNit', v)} />
+      <Field label="Teléfono" value={facturacion.telefono} onChange={v => actualizar('telefono', v)} />
+      <Field label="Dirección" value={facturacion.direccion} onChange={v => actualizar('direccion', v)} />
+      <Field label="Correo" type="email" value={facturacion.correo} onChange={v => actualizar('correo', v)} />
+      <label>Tipo de trámite
+        <select value={facturacion.tipoTramite} onChange={e => actualizar('tipoTramite', e.target.value)}>
+          {tiposSolicitud.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+        </select>
+      </label>
+      <label>Medio de pago
+        <select value={facturacion.medioPago} onChange={e => actualizar('medioPago', e.target.value)}>
+          <option value="">Seleccionar medio de pago</option>
+          <option value="Transferencia">Transferencia</option>
+          <option value="Efectivo">Efectivo</option>
+        </select>
+      </label>
+      <label>Valor
+        <input readOnly value={valor === null ? 'No aplica' : moneda(valor)} />
+      </label>
+    </div>
+  </div>;
+}
+
 function Checklist({ tipoSolicitud, documentos, onChange }) {
   return <div className="checklist">
     {documentosRequeridos(tipoSolicitud).map(id => <label key={id} className="check-item">
@@ -923,50 +1029,8 @@ function Checklist({ tipoSolicitud, documentos, onChange }) {
   </div>;
 }
 
-
-function FacturacionForm({ value, onChange, tipoClienteKey, config }) {
-  const facturacion = normalizarFacturacion(value);
-  const valor = calcularValorFacturacion(tipoClienteKey, facturacion.tipoTramite, config);
-  const actualizar = (campo, nuevoValor) => onChange({ ...facturacion, [campo]: nuevoValor });
-
-  return <div className="facturacion-box">
-    <div className="two-cols">
-      <Field label="Nombre" value={facturacion.nombre} onChange={v => actualizar('nombre', v)} />
-      <Field label="Cédula o NIT" value={facturacion.identificacion} onChange={v => actualizar('identificacion', v)} />
-      <Field label="Teléfono" value={facturacion.telefono} onChange={v => actualizar('telefono', v)} />
-      <Field label="Dirección" value={facturacion.direccion} onChange={v => actualizar('direccion', v)} />
-    </div>
-    <Field label="Correo" type="email" value={facturacion.correo} onChange={v => actualizar('correo', v)} />
-    <div className="two-cols">
-      <label>Tipo de trámite
-        <select value={facturacion.tipoTramite} onChange={e => actualizar('tipoTramite', e.target.value)}>
-          {tiposSolicitud.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-        </select>
-      </label>
-      <label>Medio de pago
-        <select value={facturacion.medioPago} onChange={e => actualizar('medioPago', e.target.value)}>
-          <option value="Transferencia">Transferencia</option>
-          <option value="Efectivo">Efectivo</option>
-        </select>
-      </label>
-    </div>
-    <label>Valor según el tipo de trámite
-      <input readOnly value={moneda(valor)} />
-    </label>
-    <p className="hint">Este valor se calcula con la tarifa configurada para el tipo de cliente/paquete y el tipo de trámite seleccionado.</p>
-  </div>;
-}
-
-function CitaEmbajadaPanel({ value, onChange }) {
-  return <div className="date-panel">
-    <label>Fecha de cita en embajada
-      <input type="date" value={value || ''} onChange={e => onChange(e.target.value)} />
-    </label>
-    <p className="hint">Selecciona únicamente la fecha. No se requiere registrar hora en esta etapa.</p>
-  </div>;
-}
-
-function Resumen({ calculo, fechaAsesoria, horaAsesoria, fechaCitaEmbajada }) {
+function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada }) {
+  const facturacionNormalizada = normalizarFacturacion(facturacion, { tipoClienteKey }, config);
   return <section className="panel summary">
     <h2>Resumen automático</h2>
     <Line label="Valor asesoría AmCham" value={moneda(calculo.tarifa)} />
@@ -981,7 +1045,14 @@ function Resumen({ calculo, fechaAsesoria, horaAsesoria, fechaCitaEmbajada }) {
     <div className={claseEstado(calculo.estado)}>{calculo.estado}</div>
     <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. El estado del proceso se actualiza según los documentos recibidos o la selección manual de la asesora.</p>
     {(fechaAsesoria || horaAsesoria) && <p className="hint"><strong>Asesoría:</strong> {fechaAsesoria || 'sin fecha'} {horaAsesoria || ''}</p>}
-    {fechaCitaEmbajada && <p className="hint"><strong>Cita embajada:</strong> {fechaCitaEmbajada}</p>}
+    {facturacion && <div className="info-box muted">
+      <strong>Facturación</strong>
+      <Line label="Nombre" value={facturacionNormalizada.nombre || 'Pendiente'} />
+      <Line label="Tipo de trámite" value={textoSolicitud(facturacionNormalizada.tipoTramite)} />
+      <Line label="Medio de pago" value={facturacionNormalizada.medioPago || 'Pendiente'} />
+      <Line label="Valor" value={facturacionNormalizada.valor ? moneda(facturacionNormalizada.valor) : 'No aplica'} />
+    </div>}
+    {fechaCitaEmbajada && <p className="hint"><strong>Fecha Cita embajada:</strong> {fechaCitaEmbajada}</p>}
   </section>;
 }
 
@@ -1016,11 +1087,47 @@ function claseEstado(estado = '') {
   return 'pill ok';
 }
 
+
+function ModalNotificacion({ modal, onClose, onConfirm }) {
+  if (!modal) return null;
+  const esConfirmacion = modal.tipo === 'confirmacion';
+  return <div className="modal-overlay" role="dialog" aria-modal="true">
+    <div className="modal-card">
+      <h2>{modal.titulo}</h2>
+      <p>{modal.mensaje}</p>
+      <div className="modal-actions">
+        {esConfirmacion && <button type="button" className="secondary fit" onClick={onClose}>Cancelar</button>}
+        <button type="button" className="primary fit" onClick={esConfirmacion ? onConfirm : onClose}>{modal.boton || 'Aceptar'}</button>
+      </div>
+    </div>
+  </div>;
+}
+
 function Configuracion({ config, setConfig }) {
+  const [borrador, setBorrador] = useState(() => normalizarConfiguracion(config));
   const [nuevaAsesora, setNuevaAsesora] = useState('');
+  const [modal, setModal] = useState(null);
+
+  useEffect(() => {
+    setBorrador(normalizarConfiguracion(config));
+  }, [config]);
+
+  function mostrarModal(titulo, mensaje, tipo = 'info', onConfirm = null) {
+    setModal({ titulo, mensaje, tipo, onConfirm, boton: tipo === 'confirmacion' ? 'Confirmar' : 'Aceptar' });
+  }
+
+  function cerrarModal() {
+    setModal(null);
+  }
+
+  function confirmarModal() {
+    const accion = modal?.onConfirm;
+    setModal(null);
+    if (accion) accion();
+  }
 
   function actualizarTarifa(tipoCliente, campo, valor) {
-    setConfig(prev => normalizarConfiguracion({
+    setBorrador(prev => normalizarConfiguracion({
       ...prev,
       tarifas: {
         ...prev.tarifas,
@@ -1033,7 +1140,7 @@ function Configuracion({ config, setConfig }) {
   }
 
   function actualizarCosto(campo, valor) {
-    setConfig(prev => normalizarConfiguracion({
+    setBorrador(prev => normalizarConfiguracion({
       ...prev,
       costos: {
         ...prev.costos,
@@ -1043,7 +1150,7 @@ function Configuracion({ config, setConfig }) {
   }
 
   function actualizarAsesora(indice, valor) {
-    setConfig(prev => {
+    setBorrador(prev => {
       const asesoras = [...prev.asesoras];
       asesoras[indice] = valor;
       return { ...prev, asesoras };
@@ -1053,41 +1160,66 @@ function Configuracion({ config, setConfig }) {
   function agregarAsesora() {
     const nombre = nuevaAsesora.trim();
     if (!nombre) return;
-    if (config.asesoras.some(a => normalizar(a) === normalizar(nombre))) {
-      alert('Esa asesora ya está registrada.');
+    if (borrador.asesoras.some(a => normalizar(a) === normalizar(nombre))) {
+      mostrarModal('Asesora duplicada', 'Esa asesora ya está registrada en la configuración.');
       return;
     }
-    setConfig(prev => normalizarConfiguracion({ ...prev, asesoras: [...prev.asesoras, nombre] }));
+    setBorrador(prev => normalizarConfiguracion({ ...prev, asesoras: [...prev.asesoras, nombre] }));
     setNuevaAsesora('');
   }
 
   function eliminarAsesora(indice) {
-    if (config.asesoras.length === 1) {
-      alert('Debe quedar al menos una asesora en configuración.');
+    if (borrador.asesoras.length === 1) {
+      mostrarModal('No se puede eliminar', 'Debe quedar al menos una asesora en configuración.');
       return;
     }
-    setConfig(prev => normalizarConfiguracion({ ...prev, asesoras: prev.asesoras.filter((_, i) => i !== indice) }));
+    const nombre = borrador.asesoras[indice];
+    mostrarModal(
+      'Eliminar asesora',
+      `¿Deseas eliminar a ${nombre} del listado de asesoras? Los casos antiguos conservarán su nombre, pero ya no aparecerá como opción para nuevos registros.`,
+      'confirmacion',
+      () => setBorrador(prev => normalizarConfiguracion({ ...prev, asesoras: prev.asesoras.filter((_, i) => i !== indice) }))
+    );
   }
 
   function restaurarValoresBase() {
-    if (confirm('¿Deseas restaurar las tarifas, costos y asesoras base?')) {
-      setConfig(normalizarConfiguracion(configuracionBase));
-    }
+    mostrarModal(
+      'Restaurar configuración base',
+      '¿Deseas restaurar las tarifas, valores informativos y asesoras base? Recuerda que el cambio solo quedará aplicado cuando presiones Guardar.',
+      'confirmacion',
+      () => setBorrador(normalizarConfiguracion(configuracionBase))
+    );
+  }
+
+  function guardarConfiguracion() {
+    const limpia = normalizarConfiguracion(borrador);
+    setConfig(limpia);
+    mostrarModal('Configuración guardada', 'Los cambios fueron guardados correctamente y ya se reflejan en Nuevo caso, Casos y Resumen automático.');
   }
 
   return <div className="config-stack">
+    <ModalNotificacion modal={modal} onClose={cerrarModal} onConfirm={confirmarModal} />
+
+    <section className="panel notice-panel">
+      <div>
+        <h2>Configuración</h2>
+        <p>Los cambios que hagas en esta sección quedan como borrador hasta presionar el botón <strong>Guardar</strong>. Esta será la única manera de aplicar modificaciones de tarifas, valores informativos o asesoras.</p>
+      </div>
+      <button type="button" className="primary fit" onClick={guardarConfiguracion}>Guardar</button>
+    </section>
+
     <section className="panel">
       <div className="section-title">
         <div>
           <h2>Tarifas de asesoría</h2>
           <p>Estos valores sí corresponden a ingresos/facturación de AmCham y alimentan el cálculo de Nuevo caso, Casos y Resumen automático.</p>
         </div>
-        <span className="auto-save">Guardado automático</span>
+        <span className="pending-save">Pendiente guardar</span>
       </div>
       <div className="table-wrap">
         <table>
           <thead><tr><th>Tipo cliente</th><th>Primera vez</th><th>Renovación</th><th>Actualización</th><th>Global Entry</th></tr></thead>
-          <tbody>{Object.entries(config.tarifas).map(([id, t]) => <tr key={id}>
+          <tbody>{Object.entries(borrador.tarifas).map(([id, t]) => <tr key={id}>
             <td><strong>{t.label}</strong></td>
             <td><MoneyInput value={t.primeraVez} onChange={v => actualizarTarifa(id, 'primeraVez', v)} /></td>
             <td><MoneyInput value={t.renovacion} onChange={v => actualizarTarifa(id, 'renovacion', v)} /></td>
@@ -1108,16 +1240,16 @@ function Configuracion({ config, setConfig }) {
       </div>
       <div className="two-cols">
         <label>Envío documentación Bogotá / Renovación
-          <input type="number" min="0" value={config.costos.envioDocumentacionBogota} onChange={e => actualizarCosto('envioDocumentacionBogota', e.target.value)} />
+          <input type="number" min="0" value={borrador.costos.envioDocumentacionBogota} onChange={e => actualizarCosto('envioDocumentacionBogota', e.target.value)} />
         </label>
         <label>Derechos consulares en USD
-          <input type="number" min="0" value={config.costos.derechosConsularesUsd} onChange={e => actualizarCosto('derechosConsularesUsd', e.target.value)} />
+          <input type="number" min="0" value={borrador.costos.derechosConsularesUsd} onChange={e => actualizarCosto('derechosConsularesUsd', e.target.value)} />
         </label>
         <label>FedEx domicilio
-          <input type="number" min="0" value={config.costos.fedexDomicilio} onChange={e => actualizarCosto('fedexDomicilio', e.target.value)} />
+          <input type="number" min="0" value={borrador.costos.fedexDomicilio} onChange={e => actualizarCosto('fedexDomicilio', e.target.value)} />
         </label>
         <label>FedEx Alto Prado
-          <input type="number" min="0" value={config.costos.fedexAltoPrado} onChange={e => actualizarCosto('fedexAltoPrado', e.target.value)} />
+          <input type="number" min="0" value={borrador.costos.fedexAltoPrado} onChange={e => actualizarCosto('fedexAltoPrado', e.target.value)} />
         </label>
       </div>
     </section>
@@ -1126,11 +1258,11 @@ function Configuracion({ config, setConfig }) {
       <div className="section-title">
         <div>
           <h2>Asesoras</h2>
-          <p>Este listado se conecta con el campo Asesor responsable en Nuevo caso y Casos.</p>
+          <p>Este listado se conecta con el campo Asesor responsable en Nuevo caso y Casos después de guardar la configuración.</p>
         </div>
       </div>
       <div className="advisor-list">
-        {config.asesoras.map((asesora, indice) => <div className="advisor-row" key={`${asesora}-${indice}`}>
+        {borrador.asesoras.map((asesora, indice) => <div className="advisor-row" key={`${asesora}-${indice}`}>
           <input value={asesora} onChange={e => actualizarAsesora(indice, e.target.value)} />
           <button type="button" className="danger" onClick={() => eliminarAsesora(indice)}>Eliminar</button>
         </div>)}
@@ -1139,11 +1271,12 @@ function Configuracion({ config, setConfig }) {
         <input value={nuevaAsesora} onChange={e => setNuevaAsesora(e.target.value)} onKeyDown={e => e.key === 'Enter' && agregarAsesora()} placeholder="Nombre de nueva asesora" />
         <button type="button" className="primary fit" onClick={agregarAsesora}>Agregar asesora</button>
       </div>
-      <p className="hint">Si eliminas una asesora, los casos antiguos conservan su nombre, pero ya no aparecerá como opción para nuevos registros.</p>
+      <p className="hint">Si eliminas una asesora, los casos antiguos conservan su nombre, pero ya no aparecerá como opción para nuevos registros después de guardar.</p>
     </section>
 
     <section className="panel actions-row">
       <button type="button" className="secondary fit" onClick={restaurarValoresBase}>Restaurar configuración base</button>
+      <button type="button" className="primary fit" onClick={guardarConfiguracion}>Guardar</button>
       <span className="hint">La configuración se guarda en el navegador durante esta fase local. Los valores informativos no se suman a la facturación de AmCham.</span>
     </section>
   </div>;

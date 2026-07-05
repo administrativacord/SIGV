@@ -111,7 +111,20 @@ header span { background: #e0ecff; color: #1d4ed8; padding: 8px 12px; border-rad
 .info-box strong { display: block; color: #0f172a; margin-bottom: 6px; }
 .info-box p { margin: 0 0 8px; color: #475569; font-size: 14px; line-height: 1.45; }
 .info-box .line:last-child { border-bottom: 0; }
-
-.facturacion-box, .date-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
-.date-panel label { margin-bottom: 8px; }
-.facturacion-box input[readonly] { background: #eef6ff; color: #0b5cab; font-weight: 900; cursor: default; }
+.facturacion-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+.actions-row.compact { margin: 0 0 14px; }
+.actions-row.compact .hint { margin: 0; }
+input[readonly] { background: #f1f5f9; color: #0f172a; font-weight: 800; }
+.info-box.muted { border-color: #e2e8f0; background: #fafafa; }
+.notice-panel { display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+.notice-panel h2 { margin: 0 0 6px; }
+.notice-panel p { margin: 0; color: #475569; line-height: 1.45; }
+.pending-save { background: #fef3c7; color: #92400e; padding: 8px 12px; border-radius: 999px; font-weight: 900; white-space: nowrap; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .55); display: grid; place-items: center; padding: 20px; z-index: 50; }
+.modal-card { width: min(440px, 100%); background: white; border-radius: 22px; padding: 24px; box-shadow: 0 25px 60px rgba(15, 23, 42, .35); }
+.modal-card h2 { margin: 0 0 10px; color: #0f172a; }
+.modal-card p { margin: 0; color: #475569; line-height: 1.5; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+@media (max-width: 760px) {
+  .notice-panel { flex-direction: column; align-items: flex-start; }
+}
