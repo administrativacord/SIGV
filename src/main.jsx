@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const APP_VERSION = 'Fase 2.1 Web · Ajustes operativos';
+const APP_VERSION = 'Fase 2.2 Web · Estado del Proceso';
 
 const tarifas = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -37,13 +37,15 @@ const documentosPorTipo = {
   globalEntry: ['pasaporte', 'pagoAsesoria', 'cuentaTtp'],
 };
 
-const estadosManuales = [
-  { id: '', label: 'Automático según documentos' },
-  { id: 'Asesoría agendada', label: 'Asesoría agendada' },
-  { id: 'DS-160 en revisión', label: 'DS-160 en revisión' },
-  { id: 'Pendiente firma / aprobación del cliente', label: 'Pendiente firma / aprobación del cliente' },
-  { id: 'Enviado a cliente', label: 'Enviado a cliente' },
-  { id: 'Finalizado', label: 'Finalizado' },
+const estadosProceso = [
+  'Pendiente Documentación',
+  'Pendiente de pago Asesoría',
+  'Pendiente de pago Derechos consulares',
+  'Pendiente Agendamiento de Asesoría',
+  'Asesoría Agendada',
+  'Pendiente Facturación',
+  'Pendiente Cita embajada',
+  'Finalizado',
 ];
 
 const plantillas = [
@@ -145,6 +147,31 @@ function normalizar(texto = '') {
   return String(texto).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
+function normalizarEstadoProceso(estado = '') {
+  const limpio = String(estado || '').trim();
+  const equivalencias = {
+    'Pendiente de documentos': 'Pendiente Documentación',
+    'Listo para agendar asesoría': 'Pendiente Agendamiento de Asesoría',
+    'Asesoría agendada': 'Asesoría Agendada',
+    'DS-160 en revisión': 'Pendiente Documentación',
+    'Pendiente firma / aprobación del cliente': 'Pendiente Documentación',
+    'Enviado a cliente': 'Pendiente Facturación',
+  };
+  if (estadosProceso.includes(limpio)) return limpio;
+  return equivalencias[limpio] || '';
+}
+
+function estadoAutomaticoProceso(requeridos, data) {
+  const docs = data.documentos || data.documentosObj || {};
+  const completos = requeridos.filter(id => docs[id]).length;
+  const documentosCompletos = completos === requeridos.length;
+  const faltantes = requeridos.filter(id => !docs[id]);
+
+  if (documentosCompletos) return 'Pendiente Agendamiento de Asesoría';
+  if (faltantes.length === 1 && faltantes[0] === 'pagoAsesoria') return 'Pendiente de pago Asesoría';
+  return 'Pendiente Documentación';
+}
+
 function calcularCaso(data) {
   const tipoCliente = data.tipoCliente || data.tipoClienteKey;
   const tipoSolicitud = data.tipoSolicitud || data.tipoSolicitudKey;
@@ -154,10 +181,11 @@ function calcularCaso(data) {
   const fedex = tipoSolicitud === 'primeraVez' && data.fedex ? Number(data.fedex) : 0;
   const totalPesos = (tarifa || 0) + adicionalRenovacion + fedex;
   const requeridos = documentosRequeridos(tipoSolicitud);
-  const completos = requeridos.filter(id => data.documentos?.[id] || data.documentosObj?.[id]).length;
+  const docs = data.documentos || data.documentosObj || {};
+  const completos = requeridos.filter(id => docs[id]).length;
   const documentosCompletos = completos === requeridos.length;
-  const estadoBase = documentosCompletos ? 'Listo para agendar asesoría' : 'Pendiente de documentos';
-  const estado = documentosCompletos && data.estadoManual ? data.estadoManual : estadoBase;
+  const estadoManualNormalizado = normalizarEstadoProceso(data.estadoManual);
+  const estado = estadoManualNormalizado || estadoAutomaticoProceso(requeridos, data);
   return { tarifa, adicionalRenovacion, requiereDerechos, fedex, totalPesos, requeridos, completos, documentosCompletos, estado };
 }
 
@@ -179,9 +207,9 @@ const casosIniciales = [
   {
     id: 'CAS-2026-0001', asesor: 'Milena', nombre: 'María Gómez', telefono: '3001234567', email: 'maria@email.com',
     tipoClienteKey: 'afiliado', tipoSolicitudKey: 'renovacion', tipoCliente: 'Afiliado', tipoSolicitud: 'Renovación',
-    fedex: '', total: 305000, estado: 'Listo para agendar asesoría', documentos: '6/6',
+    fedex: '', total: 305000, estado: 'Pendiente Agendamiento de Asesoría', documentos: '6/6',
     documentosObj: { foto: true, pasaporte: true, ds160: true, pagoAsesoria: true, visaAnterior: true, autorizacionEnvio: true },
-    observacion: 'Pago validado. Lista para agendar asesoría.', seguimiento: 'Pendiente asignar horario de asesoría.',
+    observacion: 'Pago validado. Pendiente agendamiento de asesoría.', seguimiento: 'Pendiente asignar horario de asesoría.',
     fechaAsesoria: '', horaAsesoria: '', estadoManual: '',
     historial: [
       evento('Creación', 'Caso creado con documentos completos para renovación.', 'Milena'),
@@ -191,13 +219,32 @@ const casosIniciales = [
   {
     id: 'CAS-2026-0002', asesor: 'Ximena', nombre: 'Carlos Pérez', telefono: '3159876543', email: 'carlos@email.com',
     tipoClienteKey: 'noAfiliado', tipoSolicitudKey: 'primeraVez', tipoCliente: 'No afiliado', tipoSolicitud: 'Primera vez',
-    fedex: '', total: 190000, estado: 'Pendiente de documentos', documentos: '2/4',
+    fedex: '', total: 190000, estado: 'Pendiente Documentación', documentos: '2/4',
     documentosObj: { foto: true, pasaporte: true, ds160: false, pagoAsesoria: false },
     observacion: 'Falta DS-160 y soporte de pago.', seguimiento: 'Cliente enviará documentos pendientes.',
     fechaAsesoria: '', horaAsesoria: '', estadoManual: '',
     historial: [evento('Creación', 'Caso creado. Falta DS-160 y soporte de pago.', 'Ximena')],
   },
 ];
+
+function prepararCasoGuardado(caso) {
+  const calc = calcularCaso({
+    tipoClienteKey: caso.tipoClienteKey,
+    tipoSolicitudKey: caso.tipoSolicitudKey,
+    fedex: caso.fedex || '',
+    documentosObj: caso.documentosObj || {},
+    estadoManual: caso.estadoManual,
+  });
+  return {
+    ...caso,
+    estadoManual: normalizarEstadoProceso(caso.estadoManual),
+    tipoCliente: tarifas[caso.tipoClienteKey]?.label || caso.tipoCliente,
+    tipoSolicitud: textoSolicitud(caso.tipoSolicitudKey),
+    total: calc.totalPesos,
+    estado: calc.estado,
+    documentos: `${calc.completos}/${calc.requeridos.length}`,
+  };
+}
 
 function App() {
   const [logueado, setLogueado] = useState(false);
@@ -209,9 +256,9 @@ function App() {
   const [casos, setCasos] = useState(() => {
     try {
       const guardados = localStorage.getItem('sigv_casos_fase2');
-      return guardados ? JSON.parse(guardados) : casosIniciales;
+      return guardados ? JSON.parse(guardados).map(prepararCasoGuardado) : casosIniciales.map(prepararCasoGuardado);
     } catch {
-      return casosIniciales;
+      return casosIniciales.map(prepararCasoGuardado);
     }
   });
 
@@ -366,8 +413,8 @@ function Login({ usuario, clave, setUsuario, setClave, onLogin }) {
 
 function Dashboard({ casos, onOpen }) {
   const pendientes = casos.filter(c => c.estado.includes('Pendiente')).length;
-  const listos = casos.filter(c => c.estado.includes('Listo')).length;
-  const agendados = casos.filter(c => c.estado.includes('agendada')).length;
+  const listos = casos.filter(c => c.estado.includes('Pendiente Agendamiento')).length;
+  const agendados = casos.filter(c => c.estado.includes('Asesoría Agendada')).length;
   const facturado = casos.reduce((acc, c) => acc + (Number(c.total) || 0), 0);
   const recientes = casos.slice(0, 5);
 
@@ -375,7 +422,7 @@ function Dashboard({ casos, onOpen }) {
     <section className="grid cards">
       <Card title="Casos registrados" value={casos.length} />
       <Card title="Pendientes" value={pendientes} />
-      <Card title="Listos para agendar" value={listos} />
+      <Card title="Pendientes agendamiento" value={listos} />
       <Card title="Asesorías agendadas" value={agendados} />
       <Card title="Total estimado" value={moneda(facturado)} />
     </section>
@@ -441,6 +488,13 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud }
       <label>Observación
         <textarea value={form.observacion} onChange={e => setForm({ ...form, observacion: e.target.value })} placeholder="Ej: pendiente soporte de pago, cliente enviará foto mañana..." />
       </label>
+
+      <h2>Estado del Proceso</h2>
+      <label>Estado actual
+        <select value={form.estadoManual || calculo.estado} onChange={e => setForm({ ...form, estadoManual: e.target.value })}>
+          {estadosProceso.map(estado => <option key={estado} value={estado}>{estado}</option>)}
+        </select>
+      </label>
       <button className="primary" type="submit">Guardar caso</button>
     </section>
 
@@ -468,13 +522,10 @@ function Casos({ casos, onOpen }) {
       <label>Buscar caso
         <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="ID, cliente, teléfono, asesor o email" />
       </label>
-      <label>Estado
+      <label>Estado del Proceso
         <select value={estado} onChange={e => setEstado(e.target.value)}>
           <option value="todos">Todos</option>
-          <option value="Pendiente">Pendientes</option>
-          <option value="Listo">Listos para agendar</option>
-          <option value="agendada">Asesoría agendada</option>
-          <option value="Finalizado">Finalizados</option>
+          {estadosProceso.map(e => <option key={e} value={e}>{e}</option>)}
         </select>
       </label>
       <label>Solicitud
@@ -502,7 +553,7 @@ function CaseTable({ casos, onOpen, compacto = false }) {
           <th>Solicitud</th>
           <th>Documentos</th>
           <th>Total</th>
-          <th>Estado</th>
+          <th>Estado del Proceso</th>
           <th>Acción</th>
         </tr>
       </thead>
@@ -579,8 +630,8 @@ function DetalleCaso({ caso, onBack, onSave }) {
       </div>
 
       <div className="quick-actions">
-        <button type="button" onClick={() => accionRapida('Asesoría agendada', 'Se marcó el caso como asesoría agendada.')}>Asesoría agendada</button>
-        <button type="button" onClick={() => accionRapida('DS-160 en revisión', 'Se marcó el DS-160 en revisión.')}>DS-160 en revisión</button>
+        <button type="button" onClick={() => accionRapida('Asesoría Agendada', 'Se marcó el caso como asesoría agendada.')}>Asesoría Agendada</button>
+        <button type="button" onClick={() => accionRapida('Pendiente Cita embajada', 'Se marcó el caso como pendiente de cita en embajada.')}>Pendiente Cita embajada</button>
         <button type="button" onClick={() => accionRapida('Finalizado', 'Se marcó el caso como finalizado.')}>Finalizar</button>
       </div>
 
@@ -628,15 +679,16 @@ function DetalleCaso({ caso, onBack, onSave }) {
           <input type="time" value={edit.horaAsesoria || ''} onChange={e => setEdit({ ...edit, horaAsesoria: e.target.value })} />
         </label>
       </div>
-      <label>Estado operativo
-        <select value={edit.estadoManual || ''} onChange={e => setEdit({ ...edit, estadoManual: e.target.value })}>
-          {estadosManuales.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-        </select>
-      </label>
-
       <h2>6. Observaciones y seguimiento</h2>
       <label>Observación general
         <textarea value={edit.observacion || ''} onChange={e => setEdit({ ...edit, observacion: e.target.value })} />
+      </label>
+
+      <h2>Estado del Proceso</h2>
+      <label>Estado actual
+        <select value={normalizarEstadoProceso(edit.estadoManual) || calc.estado} onChange={e => setEdit({ ...edit, estadoManual: e.target.value })}>
+          {estadosProceso.map(estado => <option key={estado} value={estado}>{estado}</option>)}
+        </select>
       </label>
       <button className="primary" onClick={() => guardar()}>Guardar cambios</button>
     </section>
@@ -745,7 +797,7 @@ function Resumen({ calculo, fechaAsesoria, horaAsesoria }) {
     <Line label="Derechos consulares" value={calculo.requiereDerechos ? 'USD 185' : 'No aplica'} />
     <div className="total"><span>Total en pesos</span><strong>{moneda(calculo.totalPesos)}</strong></div>
     <div className={claseEstado(calculo.estado)}>{calculo.estado}</div>
-    <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. Solo se agenda asesoría cuando estén completos los documentos requeridos.</p>
+    <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. El estado del proceso se actualiza según los documentos recibidos o la selección manual de la asesora.</p>
     {(fechaAsesoria || horaAsesoria) && <p className="hint"><strong>Asesoría:</strong> {fechaAsesoria || 'sin fecha'} {horaAsesoria || ''}</p>}
   </section>;
 }
@@ -763,9 +815,9 @@ function Line({ label, value }) {
 }
 
 function claseEstado(estado = '') {
-  if (estado.includes('Pendiente')) return 'pill warn';
   if (estado.includes('Finalizado')) return 'pill done';
-  if (estado.includes('agendada') || estado.includes('revisión') || estado.includes('Enviado')) return 'pill info';
+  if (estado.includes('Asesoría Agendada') || estado.includes('Cita embajada')) return 'pill info';
+  if (estado.includes('Pendiente')) return 'pill warn';
   return 'pill ok';
 }
 
