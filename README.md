@@ -1,4 +1,4 @@
-# SIGV Web - Fase 2.6 Facturación y cita embajada
+# SIGV Web - Fase 2.7 Facturación y cita embajada
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
@@ -80,8 +80,14 @@ Clave: `1234`
 - El ZIP oficial no incluye `node_modules/`, `dist/` ni `package-lock.json`.
 
 
-## Fase 2.6 - Ajustes operativos
+## Fase 2.7 - Ajustes operativos
 
 - Configuración ahora se guarda únicamente con el botón Guardar.
 - Se agregó modal para notificaciones y confirmaciones en Configuración.
 - En Facturación se agregó el botón Copiar datos Facturación para copiar los datos en texto organizado.
+
+
+## Fase 2.7
+
+- Se retiraron los botones rápidos de cambio de estado en el detalle de casos.
+- El estado del caso solo se modifica desde la sección final Estado del Proceso.

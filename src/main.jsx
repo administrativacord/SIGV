@@ -770,15 +770,6 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
     setNuevoSeguimiento('');
   }
 
-  function accionRapida(estadoManual, texto) {
-    const actualizado = {
-      ...edit,
-      estadoManual,
-      historial: [...(edit.historial || []), evento('Acción rápida', texto, edit.asesor || 'Asesor')],
-    };
-    setEdit(actualizado);
-    onSave(actualizado, texto);
-  }
 
   return <div className="detail-grid">
     <section className="panel">
@@ -791,11 +782,6 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
         <span className={claseEstado(calc.estado)}>{calc.estado}</span>
       </div>
 
-      <div className="quick-actions">
-        <button type="button" onClick={() => accionRapida('Asesoría Agendada', 'Se marcó el caso como asesoría agendada.')}>Asesoría Agendada</button>
-        <button type="button" onClick={() => accionRapida('Pendiente Cita embajada', 'Se marcó el caso como pendiente de cita en embajada.')}>Pendiente Cita embajada</button>
-        <button type="button" onClick={() => accionRapida('Finalizado', 'Se marcó el caso como finalizado.')}>Finalizar</button>
-      </div>
 
       <h2>1. Asesor responsable</h2>
       <AsesorSelect value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} asesoras={config.asesoras} />
