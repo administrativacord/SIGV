@@ -1,6 +1,6 @@
-import { initializeApp } from 'firebase/app';
+import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyDdzik_U-S1z0YyVSvvNi4AzIkBjrydK5I',
@@ -12,6 +12,19 @@ const firebaseConfig = {
   measurementId: 'G-2TN9NHCG95',
 };
 
-export const app = initializeApp(firebaseConfig);
+export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+let firestoreInstance;
+try {
+  firestoreInstance = initializeFirestore(app, {
+    // Mejora la estabilidad de Firestore en redes corporativas o navegadores
+    // donde el canal normal de streaming puede quedarse esperando respuesta.
+    experimentalAutoDetectLongPolling: true,
+  });
+} catch (error) {
+  // En modo desarrollo con recarga en caliente, Firestore puede estar inicializado.
+  firestoreInstance = getFirestore(app);
+}
+
+export const db = firestoreInstance;

@@ -1,4 +1,4 @@
-# SIGV Web - Fase 3.0 Firebase Firestore
+# SIGV Web - Fase 3.1 Firebase Firestore
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
@@ -92,3 +92,22 @@ package-lock.json
 ```
 
 Después de descomprimirlo, debes ejecutar `npm install` para instalar Firebase y las demás dependencias.
+
+
+## Corrección Fase 3.1
+
+Esta versión corrige bloqueos donde la pantalla podía quedarse en "Guardando..." o "Cargando información desde Firestore...".
+
+Cambios aplicados:
+
+- Firestore inicializa con detección automática de long polling para redes corporativas o navegadores que bloquean el canal normal de streaming.
+- La carga inicial tiene un tiempo máximo de 12 segundos y muestra un mensaje claro si Firestore no responde.
+- Guardar caso, actualizar caso y guardar configuración tienen un tiempo máximo de 15 segundos para evitar que la interfaz quede bloqueada.
+- Los mensajes de error ahora muestran el detalle técnico que devuelve Firebase.
+
+Si el login funciona pero no aparecen casos, revisar en Firebase Console:
+
+1. Firestore Database debe estar creado.
+2. Las reglas del archivo firestore.rules deben estar publicadas.
+3. El usuario debe iniciar sesión con Authentication > Email/Password.
+4. Al crear un caso debe aparecer un documento en la colección casos.

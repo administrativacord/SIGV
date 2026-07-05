@@ -17,7 +17,15 @@ import {
   setDoc,
 } from 'firebase/firestore';
 
-const APP_VERSION = 'Fase 3.0 Web · Firebase Firestore';
+const APP_VERSION = 'Fase 3.1 Web · Firebase Firestore estable';
+
+function conTiempoLimite(promesa, ms, mensaje) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(mensaje)), ms);
+  });
+  return Promise.race([promesa, timeout]).finally(() => clearTimeout(timer));
+}
 
 const tarifasBase = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -566,11 +574,34 @@ function App() {
 
   useEffect(() => {
     if (!usuarioAuth) return undefined;
+    let activo = true;
+    let casosRespondieron = false;
+
     setCargando(true);
     setErrorConexion('');
 
+    const finalizarCarga = () => {
+      if (!activo) return;
+      setCargando(false);
+    };
+
+    const timerCarga = setTimeout(() => {
+      if (!activo || casosRespondieron) return;
+      const respaldo = localStorage.getItem('sigv_casos_fase3_backup');
+      if (respaldo) {
+        try {
+          setCasos(JSON.parse(respaldo).map(c => prepararCasoGuardado(c, config)));
+        } catch (error) {
+          console.error('Error leyendo respaldo local:', error);
+        }
+      }
+      setErrorConexion('Firestore está tardando demasiado en responder. Revisa que Firestore Database esté creado, que las reglas estén publicadas y que la red no esté bloqueando Firestore. La pantalla se desbloqueó para que puedas seguir revisando la app.');
+      finalizarCarga();
+    }, 12000);
+
     const configuracionRef = doc(db, 'configuracion', 'general');
     const cancelarConfig = onSnapshot(configuracionRef, snapshot => {
+      if (!activo) return;
       if (snapshot.exists()) {
         const limpia = normalizarConfiguracion(snapshot.data());
         setConfigState(limpia);
@@ -579,29 +610,48 @@ function App() {
         setConfigState(normalizarConfiguracion(configuracionBase));
       }
     }, error => {
+      if (!activo) return;
       console.error('Error cargando configuración:', error);
       const respaldo = localStorage.getItem('sigv_configuracion_fase3_backup');
-      if (respaldo) setConfigState(normalizarConfiguracion(JSON.parse(respaldo)));
-      setErrorConexion('No se pudo cargar la configuración desde Firestore. Revisa que Firestore esté creado y que las reglas permitan acceso a usuarios autenticados.');
+      if (respaldo) {
+        try {
+          setConfigState(normalizarConfiguracion(JSON.parse(respaldo)));
+        } catch (parseError) {
+          console.error('Error leyendo respaldo de configuración:', parseError);
+        }
+      }
+      setErrorConexion(`No se pudo cargar la configuración desde Firestore: ${error.message || error.code || 'error desconocido'}. Revisa que Firestore esté creado y que las reglas permitan acceso a usuarios autenticados.`);
     });
 
     const casosRef = query(collection(db, 'casos'), orderBy('createdAtMs', 'desc'));
     const cancelarCasos = onSnapshot(casosRef, snapshot => {
+      if (!activo) return;
+      casosRespondieron = true;
+      clearTimeout(timerCarga);
       const lista = snapshot.docs.map(item => prepararCasoGuardado({ id: item.id, ...item.data() }, config));
       setCasos(lista);
       localStorage.setItem('sigv_casos_fase3_backup', JSON.stringify(lista));
-      setCargando(false);
+      finalizarCarga();
     }, error => {
+      if (!activo) return;
+      casosRespondieron = true;
+      clearTimeout(timerCarga);
       console.error('Error cargando casos:', error);
       const respaldo = localStorage.getItem('sigv_casos_fase3_backup');
       if (respaldo) {
-        setCasos(JSON.parse(respaldo).map(c => prepararCasoGuardado(c, config)));
+        try {
+          setCasos(JSON.parse(respaldo).map(c => prepararCasoGuardado(c, config)));
+        } catch (parseError) {
+          console.error('Error leyendo respaldo de casos:', parseError);
+        }
       }
-      setCargando(false);
-      setErrorConexion('No se pudieron cargar los casos desde Firestore. Revisa que Firestore esté creado, que exista un índice si Firebase lo solicita o que las reglas permitan acceso.');
+      finalizarCarga();
+      setErrorConexion(`No se pudieron cargar los casos desde Firestore: ${error.message || error.code || 'error desconocido'}. Revisa que Firestore esté creado, que las reglas estén publicadas y que permitan acceso a usuarios autenticados.`);
     });
 
     return () => {
+      activo = false;
+      clearTimeout(timerCarga);
       cancelarConfig();
       cancelarCasos();
     };
@@ -700,18 +750,18 @@ function App() {
 
     try {
       setGuardando(true);
-      await setDoc(doc(db, 'casos', id), {
+      await conTiempoLimite(setDoc(doc(db, 'casos', id), {
         ...nuevo,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      }), 15000, 'Firestore no respondió al guardar el caso en 15 segundos.');
       setCasos(prev => [nuevo, ...prev.filter(c => c.id !== id)]);
       setForm(inicialFormulario());
       setCasoAbiertoId(id);
       setVista('detalleCaso');
     } catch (error) {
       console.error('Error guardando caso:', error);
-      alert('No se pudo guardar el caso en Firestore. Revisa la conexión, las reglas de seguridad y que Firestore esté activo.');
+      alert(`No se pudo guardar el caso en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}. Revisa la conexión, las reglas de seguridad y que Firestore Database esté activo.`);
     } finally {
       setGuardando(false);
     }
@@ -758,15 +808,15 @@ function App() {
 
     try {
       setGuardando(true);
-      await setDoc(doc(db, 'casos', actualizado.id), {
+      await conTiempoLimite(setDoc(doc(db, 'casos', actualizado.id), {
         ...actualizado,
         updatedAt: serverTimestamp(),
-      }, { merge: true });
+      }, { merge: true }), 15000, 'Firestore no respondió al actualizar el caso en 15 segundos.');
       setCasos(prev => prev.map(c => c.id === actualizado.id ? actualizado : c));
       setCasoAbiertoId(actualizado.id);
     } catch (error) {
       console.error('Error actualizando caso:', error);
-      alert('No se pudo actualizar el caso en Firestore.');
+      alert(`No se pudo actualizar el caso en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
     } finally {
       setGuardando(false);
     }
@@ -776,17 +826,17 @@ function App() {
     const limpia = normalizarConfiguracion(nuevaConfig);
     try {
       setGuardando(true);
-      await setDoc(doc(db, 'configuracion', 'general'), {
+      await conTiempoLimite(setDoc(doc(db, 'configuracion', 'general'), {
         ...limpia,
         updatedAt: serverTimestamp(),
         updatedAtMs: Date.now(),
         actualizadoPor: usuarioAuth?.email || 'Sistema',
-      }, { merge: true });
+      }, { merge: true }), 15000, 'Firestore no respondió al guardar la configuración en 15 segundos.');
       setConfigState(limpia);
       localStorage.setItem('sigv_configuracion_fase3_backup', JSON.stringify(limpia));
     } catch (error) {
       console.error('Error guardando configuración:', error);
-      alert('No se pudo guardar la configuración en Firestore.');
+      alert(`No se pudo guardar la configuración en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
       throw error;
     } finally {
       setGuardando(false);
