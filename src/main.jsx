@@ -15,8 +15,8 @@ import {
   eliminarDocumentoRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 4A.2 Web · ID A0001 y roles';
-const BUILD_ID = '2026-07-05-04A2';
+const APP_VERSION = 'Fase 4A.4 Web · Asesorías';
+const BUILD_ID = '2026-07-05-04A4';
 
 
 const rolesSigv = {
@@ -28,7 +28,7 @@ const rolesSigv = {
   asesor: {
     id: 'asesor',
     label: 'Asesor',
-    descripcion: 'Puede crear casos, editar casos y cambiar estados del proceso. No puede modificar tarifas ni configuración general.',
+    descripcion: 'Puede crear asesorías, editar asesorías y cambiar estados del proceso. No puede modificar tarifas ni configuración general.',
   },
 };
 
@@ -310,7 +310,7 @@ const plantillas = [
     asunto: 'Documentos pendientes para continuar con tu asesoría de visa',
     cuerpo: `Buenas tardes, {{cliente}}.
 
-Para poder avanzar con tu caso de visa, aún tenemos pendiente recibir la siguiente documentación:
+Para poder avanzar con tu asesoría de visa, aún tenemos pendiente recibir la siguiente documentación:
 
 {{documentosPendientes}}
 
@@ -322,11 +322,11 @@ Cordialmente,
   },
   {
     id: 'listoAgendar',
-    titulo: 'Caso listo para agendar asesoría',
-    asunto: 'Tu caso se encuentra listo para agendar asesoría',
+    titulo: 'Asesoría lista para agendar',
+    asunto: 'Tu asesoría se encuentra lista para agendar',
     cuerpo: `Buenas tardes, {{cliente}}.
 
-Te confirmamos que ya contamos con los documentos requeridos para tu caso. El siguiente paso es coordinar la fecha y hora de tu asesoría con el equipo de visas.
+Te confirmamos que ya contamos con los documentos requeridos para tu asesoría. El siguiente paso es coordinar la fecha y hora con el equipo de visas.
 
 Quedamos atentos para continuar con la programación.
 
@@ -352,7 +352,7 @@ Cordialmente,
     asunto: 'Soporte de pago pendiente - Asesoría de visa',
     cuerpo: `Buenas tardes, {{cliente}}.
 
-Para continuar con el proceso, agradecemos enviarnos el soporte de pago de la asesoría. Este documento es necesario para dejar tu caso habilitado y avanzar con la revisión correspondiente.
+Para continuar con el proceso, agradecemos enviarnos el soporte de pago de la asesoría. Este documento es necesario para dejar tu asesoría habilitada y avanzar con la revisión correspondiente.
 
 Cordialmente,
 {{asesor}}
@@ -665,7 +665,7 @@ const casosIniciales = [
     observacion: 'Pago validado. Pendiente agendamiento de asesoría.', seguimiento: 'Pendiente asignar horario de asesoría.',
     fechaAsesoria: '', horaAsesoria: '', facturacion: { nombre: 'María Gómez', cedulaNit: '', telefono: '3001234567', direccion: '', correo: 'maria@email.com', tipoTramite: 'renovacion', medioPago: 'Transferencia', valor: 150000 }, fechaCitaEmbajada: '', estadoManual: '',
     historial: [
-      evento('Creación', 'Caso creado con documentos completos para renovación.', 'Milena'),
+      evento('Creación', 'Asesoría creada con documentos completos para renovación.', 'Milena'),
       evento('Seguimiento', 'Pendiente asignar horario de asesoría.', 'Milena'),
     ],
   },
@@ -676,7 +676,7 @@ const casosIniciales = [
     documentosObj: { foto: true, pasaporte: true, ds160: false, pagoAsesoria: false },
     observacion: 'Falta DS-160 y soporte de pago.', seguimiento: 'Cliente enviará documentos pendientes.',
     fechaAsesoria: '', horaAsesoria: '', facturacion: { nombre: 'Carlos Pérez', cedulaNit: '', telefono: '3159876543', direccion: '', correo: 'carlos@email.com', tipoTramite: 'primeraVez', medioPago: '', valor: 190000 }, fechaCitaEmbajada: '', estadoManual: '',
-    historial: [evento('Creación', 'Caso creado. Falta DS-160 y soporte de pago.', 'Ximena')],
+    historial: [evento('Creación', 'Asesoría creada. Falta DS-160 y soporte de pago.', 'Ximena')],
   },
 ];
 
@@ -755,7 +755,7 @@ function App() {
         const emailPerfil = claveUsuarioSigv(usuarioAuth.email);
         const [configRemota, casosRemotos, perfilRemoto, usuariosRemotos] = await Promise.all([
           conTiempoLimite(obtenerDocumentoRest('configuracion', 'general'), 18000, 'No respondió la configuración de Firestore.'),
-          conTiempoLimite(listarColeccionRest('casos'), 18000, 'No respondió la colección de casos de Firestore.'),
+          conTiempoLimite(listarColeccionRest('casos'), 18000, 'No respondió la colección de asesorías de Firestore.'),
           conTiempoLimite(obtenerDocumentoRest('usuariosSigv', emailPerfil), 18000, 'No respondió el perfil de usuario SIGV.').catch(() => null),
           conTiempoLimite(listarColeccionRest('usuariosSigv'), 18000, 'No respondió la colección de usuarios SIGV.').catch(() => []),
         ]);
@@ -801,7 +801,7 @@ function App() {
           try {
             setCasos(JSON.parse(respaldoCasos).map(c => prepararCasoGuardado(c, config)));
           } catch (parseError) {
-            console.error('Error leyendo respaldo de casos:', parseError);
+            console.error('Error leyendo respaldo de asesorías:', parseError);
           }
         }
 
@@ -885,7 +885,7 @@ function App() {
   async function guardarCaso(e) {
     e.preventDefault();
     if (!permisos.puedeCrearCasos) {
-      alert('Tu rol no permite crear casos.');
+      alert('Tu rol no permite crear asesorías.');
       return;
     }
     const error = validarFormulario();
@@ -918,7 +918,7 @@ function App() {
       documentos: `${calculo.completos}/${calculo.requeridos.length}`,
       documentosObj: { ...principal.documentos },
       observacion: form.observacion,
-      seguimiento: form.seguimiento || 'Caso creado. Pendiente seguimiento.',
+      seguimiento: form.seguimiento || 'Asesoría creada. Pendiente seguimiento.',
       fechaAsesoria: form.fechaAsesoria,
       horaAsesoria: form.horaAsesoria,
       facturacion: normalizarFacturacion(form.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calculo.totalPesos),
@@ -929,7 +929,7 @@ function App() {
       createdAtMs: Date.now(),
       updatedAtMs: Date.now(),
       historial: [
-        evento('Creación', `Caso creado por ${form.asesor.trim()}. Integrantes: ${integrantes.length}. Documentos recibidos: ${calculo.completos}/${calculo.requeridos.length}.`, form.asesor.trim()),
+        evento('Creación', `Asesoría creada por ${form.asesor.trim()}. Integrantes: ${integrantes.length}. Documentos recibidos: ${calculo.completos}/${calculo.requeridos.length}.`, form.asesor.trim()),
       ],
     };
 
@@ -939,14 +939,14 @@ function App() {
         ...nuevo,
         createdAtIso: new Date().toISOString(),
         updatedAtIso: new Date().toISOString(),
-      }), 20000, 'Firestore no respondió al guardar el caso en 20 segundos.');
+      }), 20000, 'Firestore no respondió al guardar la asesoría en 20 segundos.');
       setCasos(prev => [nuevo, ...prev.filter(c => c.id !== id)]);
       setForm(inicialFormulario());
       setCasoAbiertoId(id);
       setVista('detalleCaso');
     } catch (error) {
       console.error('Error guardando caso:', error);
-      alert(`No se pudo guardar el caso en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}. Revisa la conexión, las reglas de seguridad y que Firestore Database esté activo.`);
+      alert(`No se pudo guardar la asesoría en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}. Revisa la conexión, las reglas de seguridad y que Firestore Database esté activo.`);
     } finally {
       setGuardando(false);
     }
@@ -954,16 +954,16 @@ function App() {
 
   function abrirCaso(id) {
     if (!puedeVerVista('detalleCaso', permisos)) {
-      alert('Tu rol no permite abrir casos.');
+      alert('Tu rol no permite abrir asesorías.');
       return;
     }
     setCasoAbiertoId(id);
     setVista('detalleCaso');
   }
 
-  async function actualizarCaso(casoActualizado, motivo = 'Caso actualizado desde detalle.') {
+  async function actualizarCaso(casoActualizado, motivo = 'Asesoría actualizada desde detalle.') {
     if (!permisos.puedeEditarCasos) {
-      alert('Tu rol no permite editar casos.');
+      alert('Tu rol no permite editar asesorías.');
       return;
     }
     const integrantes = normalizarIntegrantes(casoActualizado);
@@ -1004,12 +1004,12 @@ function App() {
       await conTiempoLimite(guardarDocumentoRest('casos', actualizado.id, {
         ...actualizado,
         updatedAtIso: new Date().toISOString(),
-      }), 20000, 'Firestore no respondió al actualizar el caso en 20 segundos.');
+      }), 20000, 'Firestore no respondió al actualizar la asesoría en 20 segundos.');
       setCasos(prev => prev.map(c => c.id === actualizado.id ? actualizado : c));
       setCasoAbiertoId(actualizado.id);
     } catch (error) {
       console.error('Error actualizando caso:', error);
-      alert(`No se pudo actualizar el caso en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+      alert(`No se pudo actualizar la asesoría en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
     } finally {
       setGuardando(false);
     }
@@ -1155,28 +1155,28 @@ function App() {
 
   async function eliminarCaso(id) {
     if (!permisos.puedeEliminarCasos) {
-      alert('Solo el Administrador puede eliminar casos.');
+      alert('Solo el Administrador puede eliminar asesorías.');
       return;
     }
     const caso = casos.find(c => c.id === id);
     if (!caso) return;
-    const confirma = window.confirm(`Vas a eliminar el caso ${caso.id} de ${textoClienteCaso(caso)}. Esta acción debe usarse solo para correcciones excepcionales. ¿Deseas continuar?`);
+    const confirma = window.confirm(`Vas a eliminar la asesoría ${caso.id} de ${textoClienteCaso(caso)}. Esta acción debe usarse solo para correcciones excepcionales. ¿Deseas continuar?`);
     if (!confirma) return;
     const clave = window.prompt('Para confirmar la eliminación escribe exactamente: ELIMINAR');
     if (clave !== 'ELIMINAR') {
-      alert('El caso no fue eliminado porque no se escribió la confirmación exacta.');
+      alert('La asesoría no fue eliminada porque no se escribió la confirmación exacta.');
       return;
     }
     try {
       setGuardando(true);
-      await conTiempoLimite(eliminarDocumentoRest('casos', id), 20000, 'Firestore no respondió al eliminar el caso en 20 segundos.');
+      await conTiempoLimite(eliminarDocumentoRest('casos', id), 20000, 'Firestore no respondió al eliminar la asesoría en 20 segundos.');
       setCasos(prev => prev.filter(c => c.id !== id));
       setCasoAbiertoId(null);
       setVista('casos');
-      alert('Caso eliminado correctamente.');
+      alert('Asesoría eliminada correctamente.');
     } catch (error) {
-      console.error('Error eliminando caso:', error);
-      alert(`No se pudo eliminar el caso en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}. Revisa que las reglas permitan eliminar casos.`);
+      console.error('Error eliminando asesoría:', error);
+      alert(`No se pudo eliminar la asesoría en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}. Revisa que las reglas permitan eliminar asesorías.`);
     } finally {
       setGuardando(false);
     }
@@ -1190,9 +1190,9 @@ function App() {
     return <AccesoBloqueado perfil={perfil} onLogout={cerrarSesion} />;
   }
 
-  const titulo = vista === 'nuevoCaso' ? 'Nuevo caso de visa'
-    : vista === 'casos' ? 'Casos registrados'
-    : vista === 'detalleCaso' ? 'Detalle y seguimiento del caso'
+  const titulo = vista === 'nuevoCaso' ? 'Nueva asesoría de visa'
+    : vista === 'casos' ? 'Asesorías registradas'
+    : vista === 'detalleCaso' ? 'Detalle y seguimiento de la asesoría'
     : vista === 'plantillas' ? 'Plantillas y respuestas rápidas'
     : vista === 'configuracion' ? 'Configuración'
     : 'Dashboard';
@@ -1201,8 +1201,8 @@ function App() {
     <aside className="sidebar">
       <div className="logo">SIGV</div>
       <button className={vista === 'dashboard' ? 'active' : ''} onClick={() => setVista('dashboard')}>Dashboard</button>
-      <button className={vista === 'nuevoCaso' ? 'active' : ''} onClick={() => setVista('nuevoCaso')}>Nuevo caso</button>
-      <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => setVista('casos')}>Casos</button>
+      <button className={vista === 'nuevoCaso' ? 'active' : ''} onClick={() => setVista('nuevoCaso')}>Nueva asesoría</button>
+      <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => setVista('casos')}>Asesorías</button>
       <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => setVista('plantillas')}>Plantillas</button>
       {permisos.puedeEditarConfiguracion && <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => setVista('configuracion')}>Configuración</button>}
       <button onClick={cerrarSesion}>Cerrar sesión</button>
@@ -1239,7 +1239,7 @@ function App() {
 
       {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => setVista('casos')} onSave={actualizarCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
-      {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">El caso seleccionado aún se está cargando o no existe.</div>}
+      {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">La asesoría seleccionada aún se está cargando o no existe.</div>}
 
       {!cargando && vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
 
@@ -1287,7 +1287,7 @@ function Dashboard({ casos, onOpen }) {
 
   return <>
     <section className="grid cards">
-      <Card title="Casos registrados" value={casos.length} />
+      <Card title="Asesorías registradas" value={casos.length} />
       <Card title="Pendientes" value={pendientes} />
       <Card title="Pendientes agendamiento" value={listos} />
       <Card title="Asesorías agendadas" value={agendados} />
@@ -1295,7 +1295,7 @@ function Dashboard({ casos, onOpen }) {
     </section>
     <section className="panel mt">
       <div className="section-title">
-        <h2>Casos recientes</h2>
+        <h2>Asesorías recientes</h2>
         <span>Seguimiento rápido</span>
       </div>
       <CaseTable casos={recientes} onOpen={onOpen} compacto />
@@ -1323,10 +1323,10 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
       <AsesorSelect value={form.asesor} onChange={v => setForm({ ...form, asesor: v })} asesoras={config.asesoras} />
 
       <h2>2. Cantidad</h2>
-      <label>Cantidad de integrantes del caso
+      <label>Cantidad de integrantes de la asesoría
         <input type="number" min="1" max="30" value={integrantes.length} onChange={e => cambiarCantidad(e.target.value)} />
       </label>
-      <p className="hint">Usa este campo cuando el caso sea de un grupo familiar o tenga varios solicitantes. Según la cantidad, se despliegan datos, solicitud y documentos para cada integrante.</p>
+      <p className="hint">Usa este campo cuando la asesoría sea de un grupo familiar o tenga varios solicitantes. Según la cantidad, se despliegan datos, solicitud y documentos para cada integrante.</p>
 
       <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
 
@@ -1374,7 +1374,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
 
       <Resumen calculo={calculo} facturacion={form.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} compacto />
 
-      <button className="primary" type="submit" disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar caso'}</button>
+      <button className="primary" type="submit" disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar asesoría'}</button>
     </section>
   </form>;
 }
@@ -1460,7 +1460,7 @@ function Casos({ casos, onOpen }) {
 
   return <section className="panel">
     <div className="toolbar">
-      <label>Buscar caso
+      <label>Buscar asesoría
         <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="ID, cliente, teléfono, asesor o email" />
       </label>
       <label>Estado del Proceso
@@ -1476,13 +1476,13 @@ function Casos({ casos, onOpen }) {
         </select>
       </label>
     </div>
-    <p className="hint">Mostrando {filtrados.length} de {casos.length} casos registrados.</p>
+    <p className="hint">Mostrando {filtrados.length} de {casos.length} asesorías registradas.</p>
     <CaseTable casos={filtrados} onOpen={onOpen} />
   </section>;
 }
 
 function CaseTable({ casos, onOpen, compacto = false }) {
-  if (!casos.length) return <div className="empty">No hay casos para mostrar con los filtros seleccionados.</div>;
+  if (!casos.length) return <div className="empty">No hay asesorías para mostrar con los filtros seleccionados.</div>;
   return <div className="table-wrap">
     <table>
       <thead>
@@ -1535,9 +1535,9 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
     setEdit({ ...edit, cantidad: nuevosIntegrantes.length, integrantes: nuevosIntegrantes, estadoManual: '' });
   }
 
-  function guardar(motivo = 'Caso actualizado desde detalle.') {
+  function guardar(motivo = 'Asesoría actualizada desde detalle.') {
     if (!permisos.puedeEditarCasos) {
-      alert('Tu rol no permite guardar cambios en casos.');
+      alert('Tu rol no permite guardar cambios en asesorías.');
       return;
     }
     if (!edit.asesor.trim()) {
@@ -1557,7 +1557,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
       }
     }
     onSave({ ...edit, integrantes }, motivo);
-    alert('Caso actualizado.');
+    alert('Asesoría actualizada.');
   }
 
   function agregarSeguimiento() {
@@ -1573,13 +1573,13 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
       historial: [...(edit.historial || []), evento('Seguimiento', nuevoSeguimiento.trim(), edit.asesor || 'Asesor')],
     };
     setEdit(actualizado);
-    onSave(actualizado, 'Se agregó seguimiento al historial del caso.');
+    onSave(actualizado, 'Se agregó seguimiento al historial de la asesoría.');
     setNuevoSeguimiento('');
   }
 
-  return <div className="detail-grid">
+  return <div className="detail-grid single-case-layout">
     <section className="panel">
-      <button className="secondary" onClick={onBack}>← Volver a casos</button>
+      <button className="secondary" onClick={onBack}>← Volver a asesorías</button>
       <div className="section-title">
         <div>
           <h2>{edit.id}</h2>
@@ -1592,7 +1592,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
       <AsesorSelect value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} asesoras={config.asesoras} />
 
       <h2>2. Cantidad</h2>
-      <label>Cantidad de integrantes del caso
+      <label>Cantidad de integrantes de la asesoría
         <input type="number" min="1" max="30" value={integrantes.length} onChange={e => cambiarCantidad(e.target.value)} />
       </label>
       <p className="hint">Al aumentar la cantidad se habilitan nuevos campos de datos, solicitud y documentos. Al reducirla, se eliminan los últimos integrantes del formulario.</p>
@@ -1644,18 +1644,23 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
 
       <div className="actions-row">
         <button className="primary fit" onClick={() => guardar()} disabled={guardando || !permisos.puedeEditarCasos}>{guardando ? 'Guardando...' : 'Guardar cambios'}</button>
-        {permisos.puedeEliminarCasos && <button type="button" className="danger fit" onClick={() => onDelete?.(edit.id)} disabled={guardando}>Eliminar caso</button>}
+        {permisos.puedeEliminarCasos && <button type="button" className="danger fit" onClick={() => onDelete?.(edit.id)} disabled={guardando}>Eliminar asesoría</button>}
+      </div>
+
+      <div className="collapsible-stack">
+        <details className="collapse-panel">
+          <summary>
+            <span>Nuevo seguimiento</span>
+            <small>Agregar una nota al historial de la asesoría</small>
+          </summary>
+          <div className="collapse-content">
+            <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
+            <button className="primary fit" onClick={agregarSeguimiento} disabled={!permisos.puedeEditarCasos}>Agregar al historial</button>
+          </div>
+        </details>
+        <Historial historial={edit.historial || []} />
       </div>
     </section>
-
-    <aside className="side-stack">
-      <section className="panel">
-        <h2>Nuevo seguimiento</h2>
-        <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
-        <button className="primary" onClick={agregarSeguimiento} disabled={!permisos.puedeEditarCasos}>Agregar al historial</button>
-      </section>
-      <Historial historial={edit.historial || []} />
-    </aside>
   </div>;
 }
 
@@ -1684,14 +1689,14 @@ function Plantillas({ casos, onOpen }) {
           {plantillas.map(p => <option key={p.id} value={p.id}>{p.titulo}</option>)}
         </select>
       </label>
-      <label>Caso relacionado
+      <label>Asesoría relacionada
         <select value={caso?.id || ''} onChange={e => setCasoId(e.target.value)}>
           {casos.map(c => <option key={c.id} value={c.id}>{c.id} · {textoClienteCaso(c)}</option>)}
         </select>
       </label>
     </div>
 
-    {!caso && <div className="empty">Crea un caso para poder personalizar plantillas.</div>}
+    {!caso && <div className="empty">Crea una asesoría para poder personalizar plantillas.</div>}
     {caso && <>
       <div className="template-box">
         <strong>Asunto sugerido:</strong>
@@ -1700,7 +1705,7 @@ function Plantillas({ casos, onOpen }) {
       </div>
       <div className="actions-row">
         <button className="primary fit" onClick={copiar}>{copiado ? 'Copiado' : 'Copiar plantilla'}</button>
-        <button className="secondary fit" onClick={() => onOpen(caso.id)}>Abrir caso relacionado</button>
+        <button className="secondary fit" onClick={() => onOpen(caso.id)}>Abrir asesoría relacionada</button>
       </div>
     </>}
   </section>;
@@ -1722,17 +1727,23 @@ function aplicarPlantilla(cuerpo, caso) {
 }
 
 function Historial({ historial }) {
-  return <section className="panel">
-    <h2>Historial cronológico</h2>
-    {!historial.length && <p className="hint">Aún no hay movimientos registrados.</p>}
-    <div className="timeline">
-      {historial.slice().reverse().map(item => <div className="timeline-item" key={item.id}>
-        <strong>{item.tipo}</strong>
-        <span>{item.fecha} · {item.asesor}</span>
-        <p>{item.texto}</p>
-      </div>)}
+  const total = historial.length;
+  return <details className="collapse-panel">
+    <summary>
+      <span>Historial cronológico</span>
+      <small>{total} movimiento{total === 1 ? '' : 's'} registrado{total === 1 ? '' : 's'}</small>
+    </summary>
+    <div className="collapse-content">
+      {!historial.length && <p className="hint">Aún no hay movimientos registrados.</p>}
+      <div className="timeline">
+        {historial.slice().reverse().map(item => <div className="timeline-item" key={item.id}>
+          <strong>{item.tipo}</strong>
+          <span>{item.fecha} · {item.asesor}</span>
+          <p>{item.texto}</p>
+        </div>)}
+      </div>
     </div>
-  </section>;
+  </details>;
 }
 
 function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, datosCliente = {}, config, valorCaso = null, cantidadIntegrantes = 1 }) {
@@ -1770,7 +1781,7 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
     <div className="actions-row compact">
       <button type="button" className="secondary fit" onClick={copiarDatosCliente}>Copiar datos del cliente</button>
       <button type="button" className="primary fit" onClick={copiarDatosFacturacion}>{copiadoFacturacion ? 'Datos copiados' : 'Copiar datos Facturación'}</button>
-      <span className="hint">El valor corresponde a la facturación AmCham del caso. Si hay descuentos por cantidad, ya quedan aplicados en el total.</span>
+      <span className="hint">El valor corresponde a la facturación AmCham de la asesoría. Si hay descuentos por cantidad, ya quedan aplicados en el total.</span>
     </div>
     <div className="two-cols">
       <Field label="Nombre" value={facturacion.nombre} onChange={v => actualizar('nombre', v)} />
@@ -1964,7 +1975,7 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
     const nombre = borrador.asesoras[indice];
     mostrarModal(
       'Eliminar asesora',
-      `¿Deseas eliminar a ${nombre} del listado de asesoras? Los casos antiguos conservarán su nombre, pero ya no aparecerá como opción para nuevos registros.`,
+      `¿Deseas eliminar a ${nombre} del listado de asesoras? Las asesorías antiguas conservarán su nombre, pero ya no aparecerá como opción para nuevos registros.`,
       'confirmacion',
       () => setBorrador(prev => normalizarConfiguracion({ ...prev, asesoras: prev.asesoras.filter((_, i) => i !== indice) }))
     );
@@ -1983,7 +1994,7 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
     const limpia = normalizarConfiguracion(borrador);
     try {
       await setConfig(limpia);
-      mostrarModal('Configuración guardada', 'Los cambios fueron guardados correctamente en Firestore y ya se reflejan en Nuevo caso, Casos y Resumen automático.');
+      mostrarModal('Configuración guardada', 'Los cambios fueron guardados correctamente en Firestore y ya se reflejan en Nueva asesoría, Asesorías y Resumen automático.');
     } catch {
       mostrarModal('Error al guardar', 'No se pudo guardar la configuración en Firestore. Revisa la conexión o las reglas de seguridad.');
     }
@@ -2072,7 +2083,7 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
       <div className="section-title">
         <div>
           <h2>Tarifas de asesoría</h2>
-          <p>Estos valores sí corresponden a ingresos/facturación de AmCham y alimentan el cálculo de Nuevo caso, Casos y Resumen automático.</p>
+          <p>Estos valores sí corresponden a ingresos/facturación de AmCham y alimentan el cálculo de Nueva asesoría, Asesorías y Resumen automático.</p>
         </div>
         <span className="pending-save">Pendiente guardar</span>
       </div>
@@ -2118,7 +2129,7 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
       <div className="section-title">
         <div>
           <h2>Asesoras</h2>
-          <p>Este listado se conecta con el campo Asesor responsable en Nuevo caso y Casos después de guardar la configuración.</p>
+          <p>Este listado se conecta con el campo Asesor responsable en Nueva asesoría y Asesorías después de guardar la configuración.</p>
         </div>
       </div>
       <div className="advisor-list">
@@ -2131,7 +2142,7 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
         <input value={nuevaAsesora} onChange={e => setNuevaAsesora(e.target.value)} onKeyDown={e => e.key === 'Enter' && agregarAsesora()} placeholder="Nombre de nueva asesora" />
         <button type="button" className="primary fit" onClick={agregarAsesora}>Agregar asesora</button>
       </div>
-      <p className="hint">Si eliminas una asesora, los casos antiguos conservan su nombre, pero ya no aparecerá como opción para nuevos registros después de guardar.</p>
+      <p className="hint">Si eliminas una asesora, las asesorías antiguas conservan su nombre, pero ya no aparecerá como opción para nuevos registros después de guardar.</p>
     </section>
 
     <section className="panel actions-row">

@@ -1,14 +1,14 @@
-# SIGV Web · Fase 4A · Roles y permisos
+# SIGV Web · Fase 4A.4 · Asesorías
 
-Base tomada de la Fase 3.4 estable con Firebase Authentication, Firestore por REST, diagnóstico de conexión, creación y carga de casos desde la nube.
+Base tomada de la Fase 3.4 estable con Firebase Authentication, Firestore por REST, diagnóstico de conexión, creación y carga de asesorías desde la nube.
 
 ## Cambios principales de la Fase 4A
 
 ### 1. Roles operativos
 Se agregaron dos roles iniciales para el sistema:
 
-- **Administrador**: puede ver todo, crear casos, editar casos, consultar casos, eliminar casos con confirmación, editar configuración general, modificar tarifas, valores informativos y agregar asesoras.
-- **Asesor**: puede crear casos, editar casos y cambiar estados del proceso. No puede entrar a Configuración ni modificar tarifas o valores generales.
+- **Administrador**: puede ver todo, crear asesorías, editar asesorías, consultar asesorías, eliminar asesorías con confirmación, editar configuración general, modificar tarifas, valores informativos y agregar asesoras.
+- **Asesor**: puede crear asesorías, editar asesorías y cambiar estados del proceso. No puede entrar a Configuración ni modificar tarifas o valores generales.
 
 El rol se muestra en la barra superior después de iniciar sesión.
 
@@ -54,16 +54,16 @@ Importante: esta pantalla no crea cuentas de Firebase Authentication. Primero se
 ### 5. Restricción visual por rol
 El rol Asesor ya no ve la opción **Configuración** en el menú lateral. Tampoco puede acceder a esa vista por navegación interna. La edición de tarifas, costos informativos y asesoras queda reservada al Administrador.
 
-### 6. Eliminación controlada de casos
-Se agregó la opción **Eliminar caso** únicamente para Administrador dentro del detalle del caso. La eliminación solicita dos confirmaciones:
+### 6. Eliminación controlada de asesorías
+Se agregó la opción **Eliminar asesoría** únicamente para Administrador dentro del detalle de la asesoría. La eliminación solicita dos confirmaciones:
 
 1. Confirmación general del navegador.
 2. Escritura exacta de la palabra `ELIMINAR`.
 
-Esto reduce el riesgo de borrar casos por error.
+Esto reduce el riesgo de borrar asesorías por error.
 
 ### 7. Reglas de Firestore
-El archivo `firestore.rules` fue actualizado para incluir la colección `usuariosSigv` y permitir eliminación de casos a usuarios autenticados. En esta Fase 4A el control fino de permisos se aplica principalmente desde la interfaz. En una fase posterior puede reforzarse con reglas estrictas basadas en roles.
+El archivo `firestore.rules` fue actualizado para incluir la colección `usuariosSigv` y permitir eliminación de asesorías a usuarios autenticados. En esta Fase 4A el control fino de permisos se aplica principalmente desde la interfaz. En una fase posterior puede reforzarse con reglas estrictas basadas en roles.
 
 ## Instalación
 
@@ -89,8 +89,8 @@ Este paquete no debe incluir:
 
 ## Fase 4A.2 - ajustes aplicados
 
-- El resumen automático en el detalle de Casos queda al final del formulario, compacto, como en Nuevo caso.
-- Los nuevos casos usan el consecutivo SIGV: A0001 hasta A9999; luego B0001 hasta B9999, y así sucesivamente con C, D, etc.
+- El resumen automático en el detalle de Asesorías queda al final del formulario, compacto, como en Nueva asesoría.
+- Las nuevas asesorías usan el consecutivo SIGV: A0001 hasta A9999; luego B0001 hasta B9999, y así sucesivamente con C, D, etc.
 - Se mantiene compatibilidad con IDs anteriores tipo CAS-2026-0001 para calcular el siguiente consecutivo.
 - Se agregó protección anti-bloqueo: si no existe ningún Administrador activo en `usuariosSigv`, el usuario autenticado entra como Administrador provisional para corregir roles.
 - Se agregó botón **Reiniciar roles**: deja el usuario actual como Administrador activo y los demás usuarios como Asesor activo.
@@ -99,4 +99,18 @@ Este paquete no debe incluir:
 
 ## Corrección Fase 4A.2
 
-- Se ajustó el consecutivo de casos para que el primer caso sea `A0001` y todos los IDs mantengan 4 dígitos después de la letra: `A0001` a `A9999`, luego `B0001` a `B9999`, y así sucesivamente.
+- Se ajustó el consecutivo de asesorías para que el primera asesoría sea `A0001` y todos los IDs mantengan 4 dígitos después de la letra: `A0001` a `A9999`, luego `B0001` a `B9999`, y así sucesivamente.
+
+
+## Corrección Fase 4A.3
+
+- En la pantalla **Asesorías / Detalle**, las secciones **Nuevo seguimiento** e **Historial cronológico** fueron movidas al final del formulario.
+- Ambas secciones quedaron recogidas/cerradas por defecto para no cargar visualmente la pantalla.
+- Al presionar **Ver**, se despliega el contenido; al presionar **Ocultar**, vuelve a cerrarse.
+- Se mantiene sin cambios la lógica de roles, permisos y consecutivo de asesorías `A0001` a `A9999`, `B0001` a `B9999`, etc.
+
+## Corrección Fase 4A.4
+
+- Se ajustó el lenguaje visible de la interfaz para que el módulo pase de **Casos** a **Asesorías**.
+- El botón y la pantalla **Nuevo caso** ahora se muestran como **Nueva asesoría**.
+- Se mantuvo internamente la colección Firestore `casos` para no romper compatibilidad con datos existentes, IDs y respaldos.

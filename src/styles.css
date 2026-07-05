@@ -45,6 +45,15 @@ header span { background: #e0ecff; color: #1d4ed8; padding: 8px 12px; border-rad
 .case-layout { display: grid; grid-template-columns: 1.45fr .9fr; gap: 22px; align-items: start; }
 .detail-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .8fr); gap: 22px; align-items: start; }
 .side-stack { display: grid; gap: 18px; }
+.collapsible-stack { display: grid; gap: 12px; margin-top: 22px; }
+.collapse-panel { border: 1px solid #e2e8f0; border-radius: 18px; background: #f8fafc; overflow: hidden; }
+.collapse-panel summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 18px; cursor: pointer; font-weight: 900; color: #0f172a; }
+.collapse-panel summary::-webkit-details-marker { display: none; }
+.collapse-panel summary::after { content: 'Ver'; background: #e0ecff; color: #1d4ed8; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 900; }
+.collapse-panel[open] summary::after { content: 'Ocultar'; }
+.collapse-panel summary small { color: #64748b; font-weight: 700; }
+.collapse-content { padding: 0 18px 18px; }
+.collapse-content textarea { width: 100%; }
 .two-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .toolbar { display: grid; grid-template-columns: minmax(230px, 1fr) 220px 220px; gap: 16px; align-items: end; }
 .section-title { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
