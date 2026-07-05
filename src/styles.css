@@ -174,3 +174,13 @@ button:disabled { opacity: .65; cursor: not-allowed; transform: none; }
   border-color: #9dc9f5;
   color: #17385d;
 }
+
+.role-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; margin: 12px 0 16px; }
+.role-card { border: 1px solid #dbeafe; background: #f8fbff; border-radius: 16px; padding: 14px; }
+.role-card strong { display: block; color: #0f172a; margin-bottom: 6px; }
+.role-card p { margin: 0; color: #475569; line-height: 1.45; font-size: 14px; }
+.mt-small { margin-top: 14px; }
+button.danger.fit { width: fit-content; }
+@media (max-width: 760px) {
+  .role-grid { grid-template-columns: 1fr; }
+}

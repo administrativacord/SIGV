@@ -1,135 +1,87 @@
-# SIGV Web - Fase 3.4 Firebase Firestore REST seguro
+# SIGV Web · Fase 4A · Roles y permisos
 
-Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
+Base tomada de la Fase 3.4 estable con Firebase Authentication, Firestore por REST, diagnóstico de conexión, creación y carga de casos desde la nube.
 
-## Cambio principal de esta fase
+## Cambios principales de la Fase 4A
 
-Esta versión deja de depender del almacenamiento local como fuente principal y conecta SIGV con **Firebase Authentication** y **Cloud Firestore**.
+### 1. Roles operativos
+Se agregaron dos roles iniciales para el sistema:
 
-## Funcionalidades incluidas
+- **Administrador**: puede ver todo, crear casos, editar casos, consultar casos, eliminar casos con confirmación, editar configuración general, modificar tarifas, valores informativos y agregar asesoras.
+- **Asesor**: puede crear casos, editar casos y cambiar estados del proceso. No puede entrar a Configuración ni modificar tarifas o valores generales.
 
-- Login real con Firebase Authentication usando correo y contraseña.
-- Carga de casos desde Firestore usando REST API autenticada para evitar bloqueos del canal en tiempo real.
-- Creación de nuevos casos en la colección `casos`.
-- Edición y seguimiento de casos directamente en Firestore.
-- Configuración guardada en Firestore en `configuracion/general`.
-- Respaldo local automático solo como apoyo si la conexión falla temporalmente.
-- Indicador visual de conexión Firebase, usuario autenticado y botón de diagnóstico “Probar Firestore”.
-- Reglas básicas de Firestore incluidas en `firestore.rules`.
-- Mantiene los ajustes de Fase 2:
-  - Email opcional.
-  - Cantidad de integrantes.
-  - Descuentos automáticos desde 3 y 5 integrantes.
-  - Estados del Proceso al final del formulario.
-  - Configuración de tarifas, valores informativos y asesoras.
-  - Resumen automático compacto al final.
+El rol se muestra en la barra superior después de iniciar sesión.
 
-## Estructura Firestore usada
+### 2. Colección `usuariosSigv`
+La aplicación ahora busca el perfil del usuario autenticado en Firestore usando la colección:
 
-```text
-casos/{idCaso}
-configuracion/general
-usuarios/{uid}    // reservado para control de usuarios/roles en una próxima fase
+```txt
+usuariosSigv
 ```
 
-Cada documento en `casos` conserva los datos generales del caso y el arreglo de integrantes. En una fase posterior se puede separar integrantes e historial en subcolecciones si el volumen crece.
+El ID del documento debe ser el correo del usuario en minúscula. Ejemplo:
 
-## Configuración usada
-
-La conexión está en:
-
-```text
-src/firebase.js
+```txt
+usuariosSigv/milena@empresa.com
 ```
 
-Proyecto Firebase:
+Estructura sugerida del documento:
 
-```text
-projectId: sigv-44772
+```json
+{
+  "nombre": "Milena",
+  "email": "milena@empresa.com",
+  "rol": "asesor",
+  "activo": true
+}
 ```
 
-## Pasos obligatorios en Firebase Console
+Roles válidos:
 
-1. Entrar al proyecto **SIGV**.
-2. Ir a **Authentication**.
-3. Entrar a **Sign-in method**.
-4. Activar **Email/Password**.
-5. Crear al menos un usuario en **Authentication > Users**.
-6. Ir a **Firestore Database**.
-7. Crear base de datos.
-8. Iniciar en modo producción o prueba, pero luego pegar las reglas incluidas en `firestore.rules`.
-
-## Reglas básicas incluidas
-
-El archivo `firestore.rules` permite leer, crear y actualizar casos solo a usuarios autenticados. No permite eliminar casos.
-
-```text
-allow read, create, update: if request.auth != null;
-allow delete: if false;
+```txt
+administrador
+asesor
 ```
 
-## Ejecutar
+### 3. Administrador provisional
+Para evitar que el sistema quede bloqueado al iniciar la Fase 4A, si un usuario autenticado no tiene todavía documento en `usuariosSigv`, la app lo habilita como **Administrador provisional**. Desde Configuración se recomienda guardar ese mismo correo como Administrador para dejarlo registrado formalmente.
+
+### 4. Gestión de usuarios y roles
+En **Configuración** se agregó el bloque **Usuarios y roles**. Desde allí el Administrador puede registrar usuarios ya creados en Firebase Authentication y asignarles rol operativo dentro de SIGV.
+
+Importante: esta pantalla no crea cuentas de Firebase Authentication. Primero se debe crear el usuario con email y contraseña en Firebase Authentication y luego registrarlo en SIGV desde esta sección.
+
+### 5. Restricción visual por rol
+El rol Asesor ya no ve la opción **Configuración** en el menú lateral. Tampoco puede acceder a esa vista por navegación interna. La edición de tarifas, costos informativos y asesoras queda reservada al Administrador.
+
+### 6. Eliminación controlada de casos
+Se agregó la opción **Eliminar caso** únicamente para Administrador dentro del detalle del caso. La eliminación solicita dos confirmaciones:
+
+1. Confirmación general del navegador.
+2. Escritura exacta de la palabra `ELIMINAR`.
+
+Esto reduce el riesgo de borrar casos por error.
+
+### 7. Reglas de Firestore
+El archivo `firestore.rules` fue actualizado para incluir la colección `usuariosSigv` y permitir eliminación de casos a usuarios autenticados. En esta Fase 4A el control fino de permisos se aplica principalmente desde la interfaz. En una fase posterior puede reforzarse con reglas estrictas basadas en roles.
+
+## Instalación
 
 ```bash
 npm install
 npm run dev
 ```
 
-Para validar compilación:
+## Construcción
 
 ```bash
 npm run build
 ```
 
-## Importante
+## Archivos excluidos del ZIP
 
-Este ZIP no incluye:
+Este paquete no debe incluir:
 
-```text
-node_modules/
-dist/
-package-lock.json
-```
-
-Después de descomprimirlo, debes ejecutar `npm install` para instalar Firebase y las demás dependencias.
-
-
-## Corrección Fase 3.1
-
-Esta versión corrige bloqueos donde la pantalla podía quedarse en "Guardando..." o "Cargando información desde Firestore...".
-
-Cambios aplicados:
-
-- Firestore inicializa con detección automática de long polling para redes corporativas o navegadores que bloquean el canal normal de streaming.
-- La carga inicial tiene un tiempo máximo de 12 segundos y muestra un mensaje claro si Firestore no responde.
-- Guardar caso, actualizar caso y guardar configuración tienen un tiempo máximo de 15 segundos para evitar que la interfaz quede bloqueada.
-- Los mensajes de error ahora muestran el detalle técnico que devuelve Firebase.
-
-Si el login funciona pero no aparecen casos, revisar en Firebase Console:
-
-1. Firestore Database debe estar creado.
-2. Las reglas del archivo firestore.rules deben estar publicadas.
-3. El usuario debe iniciar sesión con Authentication > Email/Password.
-4. Al crear un caso debe aparecer un documento en la colección casos.
-
-
-## Corrección Fase 3.4
-
-Esta versión cambia la carga principal de Firestore a una conexión REST autenticada. Esto ayuda cuando el SDK web de Firestore se queda esperando respuesta por el canal de tiempo real/WebChannel en algunas redes corporativas, antivirus, proxies o navegadores.
-
-Cambios aplicados:
-
-- La app ya no depende de `onSnapshot` para cargar casos.
-- La lectura de `casos` y `configuracion/general` se realiza por REST con token del usuario autenticado.
-- Guardar caso, actualizar caso y guardar configuración también usan REST autenticado.
-- Se agregó botón **Probar Firestore** para crear un documento de diagnóstico en `diagnosticoSigv/conexion`.
-- Se agregó permiso temporal para la colección `diagnosticoSigv` en `firestore.rules`.
-- Firestore SDK conserva `experimentalForceLongPolling`, pero la operación principal queda por REST para mayor estabilidad.
-
-Después de publicar estas reglas, al presionar **Probar Firestore** debe aparecer un documento en:
-
-```text
-Firestore Database > Datos > diagnosticoSigv > conexion
-```
-
-Si el diagnóstico falla con error 403, el problema son las reglas. Si falla con error 404 o indica base no encontrada, falta crear Cloud Firestore Database. Si queda sin responder, la red está bloqueando `firestore.googleapis.com`.
+- `node_modules/`
+- `dist/`
+- `package-lock.json`

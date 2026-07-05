@@ -62,7 +62,15 @@ function decodificarCampos(fields = {}) {
 }
 
 function limpiarIdDocumento(name = '') {
-  return name.split('/').pop();
+  try {
+    return decodeURIComponent(name.split('/').pop());
+  } catch {
+    return name.split('/').pop();
+  }
+}
+
+function segmentoDocumento(id = '') {
+  return encodeURIComponent(String(id));
 }
 
 async function requestFirestore(url, opciones = {}, timeoutMs = 15000) {
@@ -94,7 +102,7 @@ async function requestFirestore(url, opciones = {}, timeoutMs = 15000) {
 }
 
 export async function obtenerDocumentoRest(coleccion, documentoId) {
-  const data = await requestFirestore(`${BASE_URL}/${coleccion}/${documentoId}`);
+  const data = await requestFirestore(`${BASE_URL}/${coleccion}/${segmentoDocumento(documentoId)}`);
   if (!data) return null;
   return { id: limpiarIdDocumento(data.name), ...decodificarCampos(data.fields || {}) };
 }
@@ -107,11 +115,19 @@ export async function listarColeccionRest(coleccion) {
 
 export async function guardarDocumentoRest(coleccion, documentoId, datos) {
   const payload = { fields: codificarCampos(datos) };
-  const data = await requestFirestore(`${BASE_URL}/${coleccion}/${documentoId}`, {
+  const data = await requestFirestore(`${BASE_URL}/${coleccion}/${segmentoDocumento(documentoId)}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   }, 20000);
   return { id: documentoId, ...decodificarCampos(data?.fields || {}) };
+}
+
+
+export async function eliminarDocumentoRest(coleccion, documentoId) {
+  await requestFirestore(`${BASE_URL}/${coleccion}/${segmentoDocumento(documentoId)}`, {
+    method: 'DELETE',
+  }, 20000);
+  return { id: documentoId, eliminado: true };
 }
 
 export async function diagnosticarFirestoreRest() {

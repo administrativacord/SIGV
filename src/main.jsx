@@ -12,10 +12,104 @@ import {
   guardarDocumentoRest,
   listarColeccionRest,
   obtenerDocumentoRest,
+  eliminarDocumentoRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 3.4 Web · Firestore diagnóstico limpio';
-const BUILD_ID = '2026-07-05-034';
+const APP_VERSION = 'Fase 4A Web · Roles y permisos';
+const BUILD_ID = '2026-07-05-04A';
+
+
+const rolesSigv = {
+  administrador: {
+    id: 'administrador',
+    label: 'Administrador',
+    descripcion: 'Puede ver todo, crear, editar, consultar, eliminar con precaución, editar configuración y agregar asesoras.',
+  },
+  asesor: {
+    id: 'asesor',
+    label: 'Asesor',
+    descripcion: 'Puede crear casos, editar casos y cambiar estados del proceso. No puede modificar tarifas ni configuración general.',
+  },
+};
+
+function claveUsuarioSigv(email = '') {
+  return String(email || '').trim().toLowerCase();
+}
+
+function normalizarRolSigv(rol = '') {
+  const limpio = normalizar(String(rol || ''));
+  if (limpio.includes('admin')) return 'administrador';
+  return 'asesor';
+}
+
+function normalizarUsuarioSigv(data = {}, fallbackEmail = '') {
+  const email = claveUsuarioSigv(data.email || fallbackEmail || data.id || '');
+  const rol = normalizarRolSigv(data.rol || data.role || 'asesor');
+  return {
+    id: data.id || email,
+    email,
+    nombre: String(data.nombre || data.name || email || 'Usuario SIGV').trim(),
+    rol,
+    activo: data.activo !== false,
+    provisional: !!data.provisional,
+    creadoEnFase4A: data.creadoEnFase4A !== false,
+    updatedAtMs: data.updatedAtMs || 0,
+  };
+}
+
+function perfilAdministradorProvisional(user) {
+  const email = claveUsuarioSigv(user?.email || '');
+  return normalizarUsuarioSigv({
+    id: email,
+    email,
+    nombre: user?.displayName || email || 'Administrador inicial',
+    rol: 'administrador',
+    activo: true,
+    provisional: true,
+  }, email);
+}
+
+function permisosDesdePerfil(perfil) {
+  if (!perfil) {
+    return {
+      activo: false,
+      rol: '',
+      esAdministrador: false,
+      esAsesor: false,
+      puedeVerTodo: false,
+      puedeCrearCasos: false,
+      puedeEditarCasos: false,
+      puedeCambiarEstado: false,
+      puedeEliminarCasos: false,
+      puedeEditarConfiguracion: false,
+      puedeAgregarAsesoras: false,
+    };
+  }
+  const rol = normalizarRolSigv(perfil?.rol);
+  const activo = perfil?.activo !== false;
+  const esAdministrador = activo && rol === 'administrador';
+  const esAsesor = activo && rol === 'asesor';
+  return {
+    activo,
+    rol,
+    esAdministrador,
+    esAsesor,
+    puedeVerTodo: esAdministrador,
+    puedeCrearCasos: esAdministrador || esAsesor,
+    puedeEditarCasos: esAdministrador || esAsesor,
+    puedeCambiarEstado: esAdministrador || esAsesor,
+    puedeEliminarCasos: esAdministrador,
+    puedeEditarConfiguracion: esAdministrador,
+    puedeAgregarAsesoras: esAdministrador,
+  };
+}
+
+function puedeVerVista(vista, permisos) {
+  if (!permisos?.activo) return false;
+  if (vista === 'configuracion') return permisos.puedeEditarConfiguracion;
+  if (vista === 'nuevoCaso') return permisos.puedeCrearCasos;
+  return ['dashboard', 'casos', 'detalleCaso', 'plantillas'].includes(vista);
+}
 
 function conTiempoLimite(promesa, ms, mensaje) {
   let timer;
@@ -557,6 +651,8 @@ function App() {
   const [guardando, setGuardando] = useState(false);
   const [errorConexion, setErrorConexion] = useState('');
   const [diagnostico, setDiagnostico] = useState('');
+  const [perfil, setPerfil] = useState(null);
+  const [usuariosSigv, setUsuariosSigv] = useState([]);
 
   useEffect(() => {
     const cancelar = onAuthStateChanged(auth, user => {
@@ -565,6 +661,8 @@ function App() {
       setCargando(false);
       if (!user) {
         setCasos([]);
+        setUsuariosSigv([]);
+        setPerfil(null);
         setConfigState(normalizarConfiguracion(configuracionBase));
       }
     });
@@ -580,28 +678,41 @@ function App() {
       setErrorConexion('');
       setDiagnostico('');
       try {
-        const [configRemota, casosRemotos] = await Promise.all([
+        const emailPerfil = claveUsuarioSigv(usuarioAuth.email);
+        const [configRemota, casosRemotos, perfilRemoto, usuariosRemotos] = await Promise.all([
           conTiempoLimite(obtenerDocumentoRest('configuracion', 'general'), 18000, 'No respondió la configuración de Firestore.'),
           conTiempoLimite(listarColeccionRest('casos'), 18000, 'No respondió la colección de casos de Firestore.'),
+          conTiempoLimite(obtenerDocumentoRest('usuariosSigv', emailPerfil), 18000, 'No respondió el perfil de usuario SIGV.').catch(() => null),
+          conTiempoLimite(listarColeccionRest('usuariosSigv'), 18000, 'No respondió la colección de usuarios SIGV.').catch(() => []),
         ]);
 
         if (!activo) return;
 
+        const perfilActual = perfilRemoto
+          ? normalizarUsuarioSigv(perfilRemoto, emailPerfil)
+          : perfilAdministradorProvisional(usuarioAuth);
+        setPerfil(perfilActual);
+
+        const usuariosLista = usuariosRemotos.map(item => normalizarUsuarioSigv(item, item.email || item.id));
+        const existePerfilEnLista = usuariosLista.some(u => claveUsuarioSigv(u.email) === claveUsuarioSigv(perfilActual.email));
+        setUsuariosSigv(existePerfilEnLista ? usuariosLista : [perfilActual, ...usuariosLista]);
+
         const configLimpia = normalizarConfiguracion(configRemota || configuracionBase);
         setConfigState(configLimpia);
-        localStorage.setItem('sigv_configuracion_fase3_backup', JSON.stringify(configLimpia));
+        localStorage.setItem('sigv_configuracion_fase4_backup', JSON.stringify(configLimpia));
 
         const lista = casosRemotos
           .map(item => prepararCasoGuardado(item, configLimpia))
           .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
         setCasos(lista);
-        localStorage.setItem('sigv_casos_fase3_backup', JSON.stringify(lista));
+        localStorage.setItem('sigv_casos_fase4_backup', JSON.stringify(lista));
       } catch (error) {
         if (!activo) return;
         console.error('Error cargando Firestore por REST:', error);
 
-        const respaldoConfig = localStorage.getItem('sigv_configuracion_fase3_backup');
-        const respaldoCasos = localStorage.getItem('sigv_casos_fase3_backup');
+        const respaldoConfig = localStorage.getItem('sigv_configuracion_fase4_backup') || localStorage.getItem('sigv_configuracion_fase3_backup');
+        const respaldoCasos = localStorage.getItem('sigv_casos_fase4_backup') || localStorage.getItem('sigv_casos_fase3_backup');
+        setPerfil(perfilAdministradorProvisional(usuarioAuth));
 
         if (respaldoConfig) {
           try {
@@ -635,6 +746,14 @@ function App() {
   useEffect(() => {
     setCasos(prev => prev.map(c => prepararCasoGuardado(c, config)));
   }, [config]);
+
+  const permisos = useMemo(() => permisosDesdePerfil(perfil), [perfil]);
+
+  useEffect(() => {
+    if (!perfil || puedeVerVista(vista, permisos)) return;
+    setVista('dashboard');
+    setCasoAbiertoId(null);
+  }, [perfil, permisos, vista]);
 
   const calculo = useMemo(() => calcularCaso(form, config), [form, config]);
   const casoAbierto = casos.find(c => c.id === casoAbiertoId);
@@ -690,6 +809,10 @@ function App() {
 
   async function guardarCaso(e) {
     e.preventDefault();
+    if (!permisos.puedeCrearCasos) {
+      alert('Tu rol no permite crear casos.');
+      return;
+    }
     const error = validarFormulario();
     if (error) {
       alert(error);
@@ -755,11 +878,19 @@ function App() {
   }
 
   function abrirCaso(id) {
+    if (!puedeVerVista('detalleCaso', permisos)) {
+      alert('Tu rol no permite abrir casos.');
+      return;
+    }
     setCasoAbiertoId(id);
     setVista('detalleCaso');
   }
 
   async function actualizarCaso(casoActualizado, motivo = 'Caso actualizado desde detalle.') {
+    if (!permisos.puedeEditarCasos) {
+      alert('Tu rol no permite editar casos.');
+      return;
+    }
     const integrantes = normalizarIntegrantes(casoActualizado);
     const principal = integrantes[0] || crearIntegrante(1);
     const calc = calcularCaso({
@@ -810,6 +941,10 @@ function App() {
   }
 
   async function guardarConfigFirestore(nuevaConfig) {
+    if (!permisos.puedeEditarConfiguracion) {
+      alert('Solo el Administrador puede editar la configuración general.');
+      return;
+    }
     const limpia = normalizarConfiguracion(nuevaConfig);
     try {
       setGuardando(true);
@@ -820,7 +955,7 @@ function App() {
         actualizadoPor: usuarioAuth?.email || 'Sistema',
       }), 20000, 'Firestore no respondió al guardar la configuración en 20 segundos.');
       setConfigState(limpia);
-      localStorage.setItem('sigv_configuracion_fase3_backup', JSON.stringify(limpia));
+      localStorage.setItem('sigv_configuracion_fase4_backup', JSON.stringify(limpia));
     } catch (error) {
       console.error('Error guardando configuración:', error);
       alert(`No se pudo guardar la configuración en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
@@ -830,8 +965,79 @@ function App() {
     }
   }
 
+
+  async function guardarUsuarioSigv(usuarioEditado) {
+    if (!permisos.puedeEditarConfiguracion) {
+      alert('Solo el Administrador puede administrar usuarios y roles.');
+      return;
+    }
+    const email = claveUsuarioSigv(usuarioEditado.email);
+    if (!email || !email.includes('@')) {
+      alert('Debes ingresar un correo válido para el usuario.');
+      return;
+    }
+    const usuarioLimpio = normalizarUsuarioSigv({
+      ...usuarioEditado,
+      id: email,
+      email,
+      rol: normalizarRolSigv(usuarioEditado.rol),
+      updatedAtIso: new Date().toISOString(),
+      updatedAtMs: Date.now(),
+      actualizadoPor: usuarioAuth?.email || 'Sistema',
+      creadoEnFase4A: true,
+    }, email);
+
+    try {
+      setGuardando(true);
+      await conTiempoLimite(guardarDocumentoRest('usuariosSigv', email, usuarioLimpio), 20000, 'Firestore no respondió al guardar el usuario en 20 segundos.');
+      setUsuariosSigv(prev => {
+        const sinDuplicado = prev.filter(u => claveUsuarioSigv(u.email) !== email);
+        return [...sinDuplicado, usuarioLimpio].sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+      });
+      if (claveUsuarioSigv(usuarioAuth?.email) === email) setPerfil(usuarioLimpio);
+    } catch (error) {
+      console.error('Error guardando usuario SIGV:', error);
+      alert(`No se pudo guardar el usuario/rol en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function eliminarCaso(id) {
+    if (!permisos.puedeEliminarCasos) {
+      alert('Solo el Administrador puede eliminar casos.');
+      return;
+    }
+    const caso = casos.find(c => c.id === id);
+    if (!caso) return;
+    const confirma = window.confirm(`Vas a eliminar el caso ${caso.id} de ${textoClienteCaso(caso)}. Esta acción debe usarse solo para correcciones excepcionales. ¿Deseas continuar?`);
+    if (!confirma) return;
+    const clave = window.prompt('Para confirmar la eliminación escribe exactamente: ELIMINAR');
+    if (clave !== 'ELIMINAR') {
+      alert('El caso no fue eliminado porque no se escribió la confirmación exacta.');
+      return;
+    }
+    try {
+      setGuardando(true);
+      await conTiempoLimite(eliminarDocumentoRest('casos', id), 20000, 'Firestore no respondió al eliminar el caso en 20 segundos.');
+      setCasos(prev => prev.filter(c => c.id !== id));
+      setCasoAbiertoId(null);
+      setVista('casos');
+      alert('Caso eliminado correctamente.');
+    } catch (error) {
+      console.error('Error eliminando caso:', error);
+      alert(`No se pudo eliminar el caso en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}. Revisa que las reglas permitan eliminar casos.`);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   if (!logueado) {
     return <Login usuario={usuario} clave={clave} setUsuario={setUsuario} setClave={setClave} onLogin={iniciarSesion} guardando={guardando} />;
+  }
+
+  if (perfil && !permisos.activo) {
+    return <AccesoBloqueado perfil={perfil} onLogout={cerrarSesion} />;
   }
 
   const titulo = vista === 'nuevoCaso' ? 'Nuevo caso de visa'
@@ -848,7 +1054,7 @@ function App() {
       <button className={vista === 'nuevoCaso' ? 'active' : ''} onClick={() => setVista('nuevoCaso')}>Nuevo caso</button>
       <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => setVista('casos')}>Casos</button>
       <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => setVista('plantillas')}>Plantillas</button>
-      <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => setVista('configuracion')}>Configuración</button>
+      {permisos.puedeEditarConfiguracion && <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => setVista('configuracion')}>Configuración</button>}
       <button onClick={cerrarSesion}>Cerrar sesión</button>
     </aside>
 
@@ -863,10 +1069,13 @@ function App() {
 
       <div className="connection-row">
         <span className="pill ok">Firebase conectado</span>
-        <small>{usuarioAuth?.email}</small>
+        <span className="pill info">Rol: {rolesSigv[permisos.rol]?.label || 'Sin rol'}</span>
+        <small>{perfil?.nombre || usuarioAuth?.email} · {usuarioAuth?.email}</small>
         {guardando && <small>Guardando cambios...</small>}
         <button className="mini-button" type="button" onClick={ejecutarDiagnosticoFirestore}>Probar Firestore</button>
       </div>
+
+      {perfil?.provisional && <div className="alert-box diagnostic">Este usuario no tiene aún un perfil en la colección usuariosSigv. Se activó como Administrador provisional para que puedas configurar los roles iniciales desde Configuración.</div>}
 
       {diagnostico && <div className="alert-box diagnostic">{diagnostico}</div>}
       {errorConexion && <div className="alert-box">{errorConexion}</div>}
@@ -874,17 +1083,17 @@ function App() {
 
       {!cargando && vista === 'dashboard' && <Dashboard casos={casos} onOpen={abrirCaso} />}
 
-      {!cargando && vista === 'nuevoCaso' && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} config={config} guardando={guardando} />}
+      {!cargando && vista === 'nuevoCaso' && permisos.puedeCrearCasos && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} config={config} guardando={guardando} perfil={perfil} />}
 
       {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} />}
 
-      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => setVista('casos')} onSave={actualizarCaso} config={config} guardando={guardando} />}
+      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => setVista('casos')} onSave={actualizarCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
       {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">El caso seleccionado aún se está cargando o no existe.</div>}
 
       {!cargando && vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
 
-      {!cargando && vista === 'configuracion' && <Configuracion config={config} setConfig={guardarConfigFirestore} />}
+      {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} guardando={guardando} perfilActual={perfil} />}
     </main>
   </div>;
 }
@@ -904,6 +1113,18 @@ function Login({ usuario, clave, setUsuario, setClave, onLogin, guardando = fals
       <button type="submit" disabled={guardando}>{guardando ? 'Ingresando...' : 'Ingresar con Firebase'}</button>
       <small>El usuario debe estar creado en Firebase Authentication con proveedor Email/Password.</small>
     </form>
+  </div>;
+}
+
+
+function AccesoBloqueado({ perfil, onLogout }) {
+  return <div className="login-page">
+    <section className="login-card">
+      <div className="brand">SIGV</div>
+      <h1>Acceso inactivo</h1>
+      <p>El usuario {perfil?.email} existe en SIGV, pero está marcado como inactivo. Solicita a un Administrador que active nuevamente el acceso.</p>
+      <button type="button" onClick={onLogout}>Cerrar sesión</button>
+    </section>
   </div>;
 }
 
@@ -1142,9 +1363,14 @@ function CaseTable({ casos, onOpen, compacto = false }) {
   </div>;
 }
 
-function DetalleCaso({ caso, onBack, onSave, config, guardando = false }) {
+function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false, permisos = {} }) {
   const [edit, setEdit] = useState(() => ({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) }));
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
+  useEffect(() => {
+    setEdit({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) });
+    setNuevoSeguimiento('');
+  }, [caso.id]);
+
   const integrantes = normalizarIntegrantes(edit);
   const principal = integrantes[0] || crearIntegrante(1);
   const calc = calcularCaso({ integrantes, estadoManual: edit.estadoManual }, config);
@@ -1160,6 +1386,10 @@ function DetalleCaso({ caso, onBack, onSave, config, guardando = false }) {
   }
 
   function guardar(motivo = 'Caso actualizado desde detalle.') {
+    if (!permisos.puedeEditarCasos) {
+      alert('Tu rol no permite guardar cambios en casos.');
+      return;
+    }
     if (!edit.asesor.trim()) {
       alert('El asesor responsable es obligatorio.');
       return;
@@ -1181,6 +1411,10 @@ function DetalleCaso({ caso, onBack, onSave, config, guardando = false }) {
   }
 
   function agregarSeguimiento() {
+    if (!permisos.puedeEditarCasos) {
+      alert('Tu rol no permite agregar seguimientos.');
+      return;
+    }
     if (!nuevoSeguimiento.trim()) return;
     const actualizado = {
       ...edit,
@@ -1256,7 +1490,10 @@ function DetalleCaso({ caso, onBack, onSave, config, guardando = false }) {
           {estadosProceso.map(estado => <option key={estado} value={estado}>{estado}</option>)}
         </select>
       </label>
-      <button className="primary" onClick={() => guardar()} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar cambios'}</button>
+      <div className="actions-row">
+        <button className="primary fit" onClick={() => guardar()} disabled={guardando || !permisos.puedeEditarCasos}>{guardando ? 'Guardando...' : 'Guardar cambios'}</button>
+        {permisos.puedeEliminarCasos && <button type="button" className="danger fit" onClick={() => onDelete?.(edit.id)} disabled={guardando}>Eliminar caso</button>}
+      </div>
     </section>
 
     <aside className="side-stack">
@@ -1264,7 +1501,7 @@ function DetalleCaso({ caso, onBack, onSave, config, guardando = false }) {
       <section className="panel">
         <h2>Nuevo seguimiento</h2>
         <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
-        <button className="primary" onClick={agregarSeguimiento}>Agregar al historial</button>
+        <button className="primary" onClick={agregarSeguimiento} disabled={!permisos.puedeEditarCasos}>Agregar al historial</button>
       </section>
       <Historial historial={edit.historial || []} />
     </aside>
@@ -1501,9 +1738,10 @@ function ModalNotificacion({ modal, onClose, onConfirm }) {
   </div>;
 }
 
-function Configuracion({ config, setConfig }) {
+function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, guardando = false, perfilActual = null }) {
   const [borrador, setBorrador] = useState(() => normalizarConfiguracion(config));
   const [nuevaAsesora, setNuevaAsesora] = useState('');
+  const [usuarioRol, setUsuarioRol] = useState({ nombre: '', email: '', rol: 'asesor', activo: true });
   const [modal, setModal] = useState(null);
 
   useEffect(() => {
@@ -1607,7 +1845,68 @@ function Configuracion({ config, setConfig }) {
         <h2>Configuración</h2>
         <p>Los cambios que hagas en esta sección quedan como borrador hasta presionar el botón <strong>Guardar</strong>. Esta será la única manera de aplicar modificaciones de tarifas, valores informativos o asesoras.</p>
       </div>
-      <button type="button" className="primary fit" onClick={guardarConfiguracion}>Guardar</button>
+      <button type="button" className="primary fit" onClick={guardarConfiguracion} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar'}</button>
+    </section>
+
+    <section className="panel">
+      <div className="section-title">
+        <div>
+          <h2>Usuarios y roles</h2>
+          <p>Primero crea el usuario en Firebase Authentication. Luego registra aquí el mismo correo y asigna su rol operativo dentro de SIGV.</p>
+        </div>
+        <span className="pending-save">Fase 4A</span>
+      </div>
+
+      <div className="role-grid">
+        {Object.values(rolesSigv).map(rol => <div className="role-card" key={rol.id}>
+          <strong>{rol.label}</strong>
+          <p>{rol.descripcion}</p>
+        </div>)}
+      </div>
+
+      <div className="table-wrap mt-small">
+        <table>
+          <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Acción</th></tr></thead>
+          <tbody>
+            {usuariosSigv.map(usuario => <tr key={usuario.email || usuario.id}>
+              <td>{usuario.nombre}{usuario.provisional && <><br /><small>Administrador provisional</small></>}</td>
+              <td>{usuario.email}</td>
+              <td><span className="pill info">{rolesSigv[normalizarRolSigv(usuario.rol)]?.label}</span></td>
+              <td><span className={usuario.activo ? 'pill ok' : 'pill warn'}>{usuario.activo ? 'Activo' : 'Inactivo'}</span></td>
+              <td><button type="button" className="small-btn" onClick={() => setUsuarioRol({ nombre: usuario.nombre, email: usuario.email, rol: normalizarRolSigv(usuario.rol), activo: usuario.activo !== false })}>Editar</button></td>
+            </tr>)}
+            {!usuariosSigv.length && <tr><td colSpan="5">No hay usuarios configurados todavía.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="two-cols mt-small">
+        <label>Nombre
+          <input value={usuarioRol.nombre} onChange={e => setUsuarioRol({ ...usuarioRol, nombre: e.target.value })} placeholder="Nombre visible" />
+        </label>
+        <label>Correo de acceso
+          <input type="email" value={usuarioRol.email} onChange={e => setUsuarioRol({ ...usuarioRol, email: e.target.value })} placeholder="correo@empresa.com" />
+        </label>
+        <label>Rol
+          <select value={usuarioRol.rol} onChange={e => setUsuarioRol({ ...usuarioRol, rol: e.target.value })}>
+            {Object.values(rolesSigv).map(rol => <option key={rol.id} value={rol.id}>{rol.label}</option>)}
+          </select>
+        </label>
+        <label>Estado
+          <select value={usuarioRol.activo ? 'activo' : 'inactivo'} onChange={e => setUsuarioRol({ ...usuarioRol, activo: e.target.value === 'activo' })}>
+            <option value="activo">Activo</option>
+            <option value="inactivo">Inactivo</option>
+          </select>
+        </label>
+      </div>
+      <div className="actions-row">
+        <button type="button" className="primary fit" disabled={guardando} onClick={async () => {
+          await onSaveUsuario?.(usuarioRol);
+          setUsuarioRol({ nombre: '', email: '', rol: 'asesor', activo: true });
+        }}>{guardando ? 'Guardando...' : 'Guardar usuario/rol'}</button>
+        <button type="button" className="secondary fit" onClick={() => setUsuarioRol({ nombre: '', email: '', rol: 'asesor', activo: true })}>Limpiar</button>
+      </div>
+      {perfilActual?.provisional && <p className="hint">Recomendación: guarda tu propio correo como Administrador para reemplazar el acceso provisional por un perfil real en Firestore.</p>}
     </section>
 
     <section className="panel">
@@ -1678,7 +1977,7 @@ function Configuracion({ config, setConfig }) {
 
     <section className="panel actions-row">
       <button type="button" className="secondary fit" onClick={restaurarValoresBase}>Restaurar configuración base</button>
-      <button type="button" className="primary fit" onClick={guardarConfiguracion}>Guardar</button>
+      <button type="button" className="primary fit" onClick={guardarConfiguracion} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar'}</button>
       <span className="hint">La configuración se guarda en Firebase Firestore. Los valores informativos no se suman a la facturación de AmCham.</span>
     </section>
   </div>;

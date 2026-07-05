@@ -6,12 +6,19 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Fase 4A: el control fino de roles se aplica en la interfaz de SIGV.
+    // Estas reglas mantienen compatibilidad para usuarios autenticados mientras
+    // se consolida la administración de roles desde la colección usuariosSigv.
     match /casos/{casoId} {
       allow read, create, update: if signedIn();
-      allow delete: if false;
+      allow delete: if signedIn();
     }
 
     match /configuracion/{documentoId} {
+      allow read, write: if signedIn();
+    }
+
+    match /usuariosSigv/{email} {
       allow read, write: if signedIn();
     }
 
