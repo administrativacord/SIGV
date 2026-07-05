@@ -1,26 +1,27 @@
-# SIGV Web - Fase 2.3 Configuración
+# SIGV Web - Fase 2.4 Costos informativos
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
 ## Ajustes aplicados en esta versión
 
-- Se cambió la sección **Tarifas** por **Configuración**.
-- La nueva sección **Configuración** permite editar los valores de las tarifas de asesoría.
-- Se agregó edición de costos adicionales:
-  - Envío de documentación a Bogotá para renovaciones.
-  - Derechos consulares en USD.
-  - FedEx domicilio.
-  - FedEx Alto Prado.
-- Se agregó un listado editable de **Asesoras**.
-- El listado de asesoras queda conectado con:
-  - **Nuevo caso** > Asesor responsable.
-  - **Casos** > Detalle editable del caso > Asesor responsable.
-- Los formularios ahora usan selector de asesora, evitando escribir nombres manualmente y mejorando la uniformidad de los registros.
-- Los cambios en configuración se guardan automáticamente en el navegador mediante `localStorage`.
-- Al modificar tarifas o costos, los cálculos de casos y resúmenes se actualizan con la configuración vigente.
+- Se corrigió el manejo de los valores de envío de documentación, FedEx y derechos consulares.
+- Estos valores ahora quedan como **valores informativos para el cliente**.
+- Los valores informativos **no se suman** al valor de asesoría ni a la facturación de AmCham.
+- El resumen automático separa claramente:
+  - **Valor asesoría AmCham**.
+  - **Total a facturar por AmCham**.
+  - **Valores informativos para el cliente**.
+- En el Dashboard, la métrica pasó a llamarse **Facturación estimada AmCham**.
+- En la tabla de Casos, la columna pasó a llamarse **Facturación AmCham**.
+- En Configuración, la sección de costos adicionales ahora se llama **Valores informativos para el cliente**.
+- Se mantiene la edición de esos valores para que el equipo pueda actualizarlos cuando cambien, sin afectar los ingresos ni la facturación de la empresa.
 
 ## Se mantiene desde fases anteriores
 
+- Sección **Configuración** con tarifas de asesoría editables.
+- Listado editable de **Asesoras** conectado con:
+  - **Nuevo caso** > Asesor responsable.
+  - **Casos** > Detalle editable del caso > Asesor responsable.
 - Base React + Vite limpia y ejecutable.
 - Login simple de prueba.
 - Dashboard con métricas operativas.

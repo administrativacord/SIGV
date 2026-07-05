@@ -107,3 +107,7 @@ header span { background: #e0ecff; color: #1d4ed8; padding: 8px 12px; border-rad
 .advisor-list { display: grid; gap: 10px; margin-bottom: 16px; }
 .advisor-row, .add-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
 .danger { background: #fee2e2; color: #991b1b; }
+.info-box { margin-top: 14px; padding: 16px; background: #f8fafc; border: 1px solid #dbeafe; border-radius: 16px; }
+.info-box strong { display: block; color: #0f172a; margin-bottom: 6px; }
+.info-box p { margin: 0 0 8px; color: #475569; font-size: 14px; line-height: 1.45; }
+.info-box .line:last-child { border-bottom: 0; }

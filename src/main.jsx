@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const APP_VERSION = 'Fase 2.3 Web · Configuración';
+const APP_VERSION = 'Fase 2.4 Web · Costos informativos';
 
 const tarifasBase = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -233,17 +233,19 @@ function calcularCaso(data, config = configuracionBase) {
   const tipoCliente = data.tipoCliente || data.tipoClienteKey;
   const tipoSolicitud = data.tipoSolicitud || data.tipoSolicitudKey;
   const tarifa = tarifas[tipoCliente]?.[tipoSolicitud];
-  const adicionalRenovacion = tipoSolicitud === 'renovacion' ? costos.envioDocumentacionBogota : 0;
+  const valorInformativoEnvioBogota = tipoSolicitud === 'renovacion' ? costos.envioDocumentacionBogota : 0;
   const requiereDerechos = tipoSolicitud === 'primeraVez' || tipoSolicitud === 'renovacion';
   const fedex = tipoSolicitud === 'primeraVez' && data.fedex ? Number(data.fedex) : 0;
-  const totalPesos = (tarifa || 0) + adicionalRenovacion + fedex;
+  // Solo la tarifa de asesoría corresponde a facturación/ingreso de AmCham.
+  // Los valores de envío, FedEx y derechos consulares son informativos para el presupuesto del cliente.
+  const totalPesos = tarifa || 0;
   const requeridos = documentosRequeridos(tipoSolicitud);
   const docs = data.documentos || data.documentosObj || {};
   const completos = requeridos.filter(id => docs[id]).length;
   const documentosCompletos = completos === requeridos.length;
   const estadoManualNormalizado = normalizarEstadoProceso(data.estadoManual);
   const estado = estadoManualNormalizado || estadoAutomaticoProceso(requeridos, data);
-  return { tarifa, adicionalRenovacion, requiereDerechos, fedex, totalPesos, requeridos, completos, documentosCompletos, estado, derechosConsularesUsd: costos.derechosConsularesUsd };
+  return { tarifa, valorInformativoEnvioBogota, adicionalRenovacion: valorInformativoEnvioBogota, requiereDerechos, fedex, totalPesos, requeridos, completos, documentosCompletos, estado, derechosConsularesUsd: costos.derechosConsularesUsd };
 }
 
 function textoSolicitud(id) {
@@ -495,7 +497,7 @@ function Dashboard({ casos, onOpen }) {
       <Card title="Pendientes" value={pendientes} />
       <Card title="Pendientes agendamiento" value={listos} />
       <Card title="Asesorías agendadas" value={agendados} />
-      <Card title="Total estimado" value={moneda(facturado)} />
+      <Card title="Facturación estimada AmCham" value={moneda(facturado)} />
     </section>
     <section className="panel mt">
       <div className="section-title">
@@ -534,9 +536,9 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, 
         </label>
       </div>
 
-      {form.tipoSolicitud === 'primeraVez' && <label>Si la visa es aprobada, devolución de pasaporte por FedEx
+      {form.tipoSolicitud === 'primeraVez' && <label>Valor informativo FedEx si la visa es aprobada
         <select value={form.fedex} onChange={e => setForm({ ...form, fedex: e.target.value })}>
-          <option value="">No incluir todavía</option>
+          <option value="">No aplica / pendiente por definir</option>
           <option value={config.costos.fedexDomicilio}>Domicilio - {moneda(config.costos.fedexDomicilio)}</option>
           <option value={config.costos.fedexAltoPrado}>Recoger en FedEx Alto Prado - {moneda(config.costos.fedexAltoPrado)}</option>
         </select>
@@ -623,7 +625,7 @@ function CaseTable({ casos, onOpen, compacto = false }) {
           {!compacto && <th>Teléfono</th>}
           <th>Solicitud</th>
           <th>Documentos</th>
-          <th>Total</th>
+          <th>Facturación AmCham</th>
           <th>Estado del Proceso</th>
           <th>Acción</th>
         </tr>
@@ -730,9 +732,9 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
         </label>
       </div>
 
-      {edit.tipoSolicitudKey === 'primeraVez' && <label>Si la visa es aprobada, devolución de pasaporte por FedEx
+      {edit.tipoSolicitudKey === 'primeraVez' && <label>Valor informativo FedEx si la visa es aprobada
         <select value={edit.fedex || ''} onChange={e => setEdit({ ...edit, fedex: e.target.value })}>
-          <option value="">No incluir todavía</option>
+          <option value="">No aplica / pendiente por definir</option>
           <option value={config.costos.fedexDomicilio}>Domicilio - {moneda(config.costos.fedexDomicilio)}</option>
           <option value={config.costos.fedexAltoPrado}>Recoger en FedEx Alto Prado - {moneda(config.costos.fedexAltoPrado)}</option>
         </select>
@@ -862,11 +864,15 @@ function Checklist({ tipoSolicitud, documentos, onChange }) {
 function Resumen({ calculo, fechaAsesoria, horaAsesoria }) {
   return <section className="panel summary">
     <h2>Resumen automático</h2>
-    <Line label="Valor asesoría" value={moneda(calculo.tarifa)} />
-    <Line label="Envío documentación Bogotá" value={moneda(calculo.adicionalRenovacion)} />
-    <Line label="FedEx devolución pasaporte" value={moneda(calculo.fedex)} />
-    <Line label="Derechos consulares" value={calculo.requiereDerechos ? `USD ${calculo.derechosConsularesUsd}` : 'No aplica'} />
-    <div className="total"><span>Total en pesos</span><strong>{moneda(calculo.totalPesos)}</strong></div>
+    <Line label="Valor asesoría AmCham" value={moneda(calculo.tarifa)} />
+    <div className="total"><span>Total a facturar por AmCham</span><strong>{moneda(calculo.totalPesos)}</strong></div>
+    <div className="info-box">
+      <strong>Valores informativos para el cliente</strong>
+      <p>Estos valores no ingresan a AmCham y no hacen parte de nuestra facturación. Se muestran únicamente para que el cliente los tenga en cuenta en su presupuesto y los pague directamente cuando corresponda.</p>
+      <Line label="Envío documentación Bogotá / Renovación" value={calculo.valorInformativoEnvioBogota ? moneda(calculo.valorInformativoEnvioBogota) : 'No aplica'} />
+      <Line label="FedEx devolución pasaporte" value={calculo.fedex ? moneda(calculo.fedex) : 'No aplica / pendiente por definir'} />
+      <Line label="Derechos consulares" value={calculo.requiereDerechos ? `USD ${calculo.derechosConsularesUsd}` : 'No aplica'} />
+    </div>
     <div className={claseEstado(calculo.estado)}>{calculo.estado}</div>
     <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. El estado del proceso se actualiza según los documentos recibidos o la selección manual de la asesora.</p>
     {(fechaAsesoria || horaAsesoria) && <p className="hint"><strong>Asesoría:</strong> {fechaAsesoria || 'sin fecha'} {horaAsesoria || ''}</p>}
@@ -968,7 +974,7 @@ function Configuracion({ config, setConfig }) {
       <div className="section-title">
         <div>
           <h2>Tarifas de asesoría</h2>
-          <p>Estos valores alimentan automáticamente el cálculo de Nuevo caso, Casos y Resumen automático.</p>
+          <p>Estos valores sí corresponden a ingresos/facturación de AmCham y alimentan el cálculo de Nuevo caso, Casos y Resumen automático.</p>
         </div>
         <span className="auto-save">Guardado automático</span>
       </div>
@@ -990,8 +996,8 @@ function Configuracion({ config, setConfig }) {
     <section className="panel">
       <div className="section-title">
         <div>
-          <h2>Costos adicionales</h2>
-          <p>Valores usados para envío de documentación, FedEx y derechos consulares.</p>
+          <h2>Valores informativos para el cliente</h2>
+          <p>Estos valores no suman a la facturación de AmCham. Solo sirven para informar al cliente costos que debe pagar directamente a terceros, al consulado o al proveedor correspondiente.</p>
         </div>
       </div>
       <div className="two-cols">
@@ -1032,7 +1038,7 @@ function Configuracion({ config, setConfig }) {
 
     <section className="panel actions-row">
       <button type="button" className="secondary fit" onClick={restaurarValoresBase}>Restaurar configuración base</button>
-      <span className="hint">La configuración se guarda en el navegador durante esta fase local.</span>
+      <span className="hint">La configuración se guarda en el navegador durante esta fase local. Los valores informativos no se suman a la facturación de AmCham.</span>
     </section>
   </div>;
 }
