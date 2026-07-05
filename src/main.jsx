@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-const APP_VERSION = 'Fase 2.4 Web · Costos informativos';
+const APP_VERSION = 'Fase 2.5 Web · Facturación y cita embajada';
 
 const tarifasBase = {
   afiliado: { label: 'Afiliado', primeraVez: 150000, renovacion: 150000, actualizacion: 75000, globalEntry: null },
@@ -27,6 +27,31 @@ const configuracionBase = {
   asesoras: asesorasBase,
 };
 
+function crearFacturacion(tipoTramite = 'primeraVez') {
+  return {
+    nombre: '',
+    identificacion: '',
+    telefono: '',
+    direccion: '',
+    correo: '',
+    tipoTramite,
+    medioPago: 'Transferencia',
+  };
+}
+
+function normalizarFacturacion(facturacion = {}, tipoTramiteBase = 'primeraVez') {
+  return {
+    ...crearFacturacion(tipoTramiteBase),
+    ...facturacion,
+    tipoTramite: facturacion.tipoTramite || tipoTramiteBase,
+    medioPago: facturacion.medioPago || 'Transferencia',
+  };
+}
+
+function calcularValorFacturacion(tipoCliente, tipoTramite, config = configuracionBase) {
+  const configuracion = normalizarConfiguracion(config);
+  return configuracion.tarifas?.[tipoCliente]?.[tipoTramite] ?? null;
+}
 
 const tiposSolicitud = [
   { id: 'primeraVez', label: 'Primera vez' },
@@ -181,6 +206,8 @@ function inicialFormulario() {
     seguimiento: '',
     fechaAsesoria: '',
     horaAsesoria: '',
+    facturacion: crearFacturacion('primeraVez'),
+    fechaCitaEmbajada: '',
     estadoManual: '',
   };
 }
@@ -269,7 +296,7 @@ const casosIniciales = [
     fedex: '', total: 305000, estado: 'Pendiente Agendamiento de Asesoría', documentos: '6/6',
     documentosObj: { foto: true, pasaporte: true, ds160: true, pagoAsesoria: true, visaAnterior: true, autorizacionEnvio: true },
     observacion: 'Pago validado. Pendiente agendamiento de asesoría.', seguimiento: 'Pendiente asignar horario de asesoría.',
-    fechaAsesoria: '', horaAsesoria: '', estadoManual: '',
+    fechaAsesoria: '', horaAsesoria: '', facturacion: normalizarFacturacion({}, 'renovacion'), fechaCitaEmbajada: '', estadoManual: '',
     historial: [
       evento('Creación', 'Caso creado con documentos completos para renovación.', 'Milena'),
       evento('Seguimiento', 'Pendiente asignar horario de asesoría.', 'Milena'),
@@ -281,7 +308,7 @@ const casosIniciales = [
     fedex: '', total: 190000, estado: 'Pendiente Documentación', documentos: '2/4',
     documentosObj: { foto: true, pasaporte: true, ds160: false, pagoAsesoria: false },
     observacion: 'Falta DS-160 y soporte de pago.', seguimiento: 'Cliente enviará documentos pendientes.',
-    fechaAsesoria: '', horaAsesoria: '', estadoManual: '',
+    fechaAsesoria: '', horaAsesoria: '', facturacion: normalizarFacturacion({}, 'primeraVez'), fechaCitaEmbajada: '', estadoManual: '',
     historial: [evento('Creación', 'Caso creado. Falta DS-160 y soporte de pago.', 'Ximena')],
   },
 ];
@@ -298,6 +325,8 @@ function prepararCasoGuardado(caso, config = configuracionBase) {
   return {
     ...caso,
     estadoManual: normalizarEstadoProceso(caso.estadoManual),
+    facturacion: normalizarFacturacion(caso.facturacion, caso.tipoSolicitudKey),
+    fechaCitaEmbajada: caso.fechaCitaEmbajada || '',
     tipoCliente: configuracion.tarifas[caso.tipoClienteKey]?.label || caso.tipoCliente,
     tipoSolicitud: textoSolicitud(caso.tipoSolicitudKey),
     total: calc.totalPesos,
@@ -354,7 +383,7 @@ function App() {
   function cambiarTipoSolicitud(tipoSolicitud) {
     const documentosActuales = form.documentos || {};
     const nuevosDocs = Object.fromEntries(documentosRequeridos(tipoSolicitud).map(id => [id, !!documentosActuales[id]]));
-    setForm({ ...form, tipoSolicitud, fedex: '', documentos: nuevosDocs, estadoManual: '' });
+    setForm({ ...form, tipoSolicitud, fedex: '', documentos: nuevosDocs, facturacion: { ...form.facturacion, tipoTramite: tipoSolicitud }, estadoManual: '' });
   }
 
   function guardarCaso(e) {
@@ -383,6 +412,8 @@ function App() {
       seguimiento: form.seguimiento || 'Caso creado. Pendiente seguimiento.',
       fechaAsesoria: form.fechaAsesoria,
       horaAsesoria: form.horaAsesoria,
+      facturacion: normalizarFacturacion(form.facturacion, form.tipoSolicitud),
+      fechaCitaEmbajada: form.fechaCitaEmbajada,
       estadoManual: form.estadoManual,
       historial: [
         evento('Creación', `Caso creado por ${form.asesor.trim()}. Documentos recibidos: ${calculo.completos}/${calculo.requeridos.length}.`, form.asesor.trim()),
@@ -411,6 +442,8 @@ function App() {
       ...casoActualizado,
       tipoCliente: config.tarifas[casoActualizado.tipoClienteKey].label,
       tipoSolicitud: textoSolicitud(casoActualizado.tipoSolicitudKey),
+      facturacion: normalizarFacturacion(casoActualizado.facturacion, casoActualizado.tipoSolicitudKey),
+      fechaCitaEmbajada: casoActualizado.fechaCitaEmbajada || '',
       total: calc.totalPesos,
       estado: calc.estado,
       documentos: `${calc.completos}/${calc.requeridos.length}`,
@@ -557,9 +590,23 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, 
         </label>
       </div>
 
-      <h2>6. Observaciones iniciales</h2>
-      <label>Observación
+      <h2>6. Facturación</h2>
+      <FacturacionForm
+        value={form.facturacion}
+        tipoClienteKey={form.tipoCliente}
+        config={config}
+        onChange={facturacion => setForm({ ...form, facturacion })}
+      />
+
+      <h2>7. Fecha Cita embajada</h2>
+      <CitaEmbajadaPanel value={form.fechaCitaEmbajada} onChange={fechaCitaEmbajada => setForm({ ...form, fechaCitaEmbajada })} />
+
+      <h2>Observaciones y seguimiento</h2>
+      <label>Observación general
         <textarea value={form.observacion} onChange={e => setForm({ ...form, observacion: e.target.value })} placeholder="Ej: pendiente soporte de pago, cliente enviará foto mañana..." />
+      </label>
+      <label>Seguimiento inicial
+        <textarea value={form.seguimiento} onChange={e => setForm({ ...form, seguimiento: e.target.value })} placeholder="Ej: se llamó al cliente, falta documento, cliente confirma envío..." />
       </label>
 
       <h2>Estado del Proceso</h2>
@@ -571,7 +618,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, cambiarTipoSolicitud, 
       <button className="primary" type="submit">Guardar caso</button>
     </section>
 
-    <Resumen calculo={calculo} />
+    <Resumen calculo={calculo} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} />
   </form>;
 }
 
@@ -646,14 +693,14 @@ function CaseTable({ casos, onOpen, compacto = false }) {
 }
 
 function DetalleCaso({ caso, onBack, onSave, config }) {
-  const [edit, setEdit] = useState({ ...caso, documentosObj: { ...caso.documentosObj } });
+  const [edit, setEdit] = useState({ ...caso, documentosObj: { ...caso.documentosObj }, facturacion: normalizarFacturacion(caso.facturacion, caso.tipoSolicitudKey), fechaCitaEmbajada: caso.fechaCitaEmbajada || '' });
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
   const calc = calcularCaso({ tipoClienteKey: edit.tipoClienteKey, tipoSolicitudKey: edit.tipoSolicitudKey, fedex: edit.fedex || '', documentosObj: edit.documentosObj, estadoManual: edit.estadoManual }, config);
 
   function cambiarSolicitudDetalle(tipoSolicitudKey) {
     const actuales = edit.documentosObj || {};
     const nuevosDocs = Object.fromEntries(documentosRequeridos(tipoSolicitudKey).map(id => [id, !!actuales[id]]));
-    setEdit({ ...edit, tipoSolicitudKey, documentosObj: nuevosDocs, estadoManual: '' });
+    setEdit({ ...edit, tipoSolicitudKey, documentosObj: nuevosDocs, facturacion: { ...edit.facturacion, tipoTramite: tipoSolicitudKey }, estadoManual: '' });
   }
 
   function guardar(motivo = 'Caso actualizado desde detalle.') {
@@ -752,9 +799,24 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
           <input type="time" value={edit.horaAsesoria || ''} onChange={e => setEdit({ ...edit, horaAsesoria: e.target.value })} />
         </label>
       </div>
-      <h2>6. Observaciones y seguimiento</h2>
+
+      <h2>6. Facturación</h2>
+      <FacturacionForm
+        value={edit.facturacion}
+        tipoClienteKey={edit.tipoClienteKey}
+        config={config}
+        onChange={facturacion => setEdit({ ...edit, facturacion })}
+      />
+
+      <h2>7. Fecha Cita embajada</h2>
+      <CitaEmbajadaPanel value={edit.fechaCitaEmbajada || ''} onChange={fechaCitaEmbajada => setEdit({ ...edit, fechaCitaEmbajada })} />
+
+      <h2>Observaciones y seguimiento</h2>
       <label>Observación general
         <textarea value={edit.observacion || ''} onChange={e => setEdit({ ...edit, observacion: e.target.value })} />
+      </label>
+      <label>Seguimiento actual
+        <textarea value={edit.seguimiento || ''} onChange={e => setEdit({ ...edit, seguimiento: e.target.value })} />
       </label>
 
       <h2>Estado del Proceso</h2>
@@ -767,7 +829,7 @@ function DetalleCaso({ caso, onBack, onSave, config }) {
     </section>
 
     <aside className="side-stack">
-      <Resumen calculo={calc} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} />
+      <Resumen calculo={calc} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} fechaCitaEmbajada={edit.fechaCitaEmbajada} />
       <section className="panel">
         <h2>Nuevo seguimiento</h2>
         <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
@@ -861,7 +923,50 @@ function Checklist({ tipoSolicitud, documentos, onChange }) {
   </div>;
 }
 
-function Resumen({ calculo, fechaAsesoria, horaAsesoria }) {
+
+function FacturacionForm({ value, onChange, tipoClienteKey, config }) {
+  const facturacion = normalizarFacturacion(value);
+  const valor = calcularValorFacturacion(tipoClienteKey, facturacion.tipoTramite, config);
+  const actualizar = (campo, nuevoValor) => onChange({ ...facturacion, [campo]: nuevoValor });
+
+  return <div className="facturacion-box">
+    <div className="two-cols">
+      <Field label="Nombre" value={facturacion.nombre} onChange={v => actualizar('nombre', v)} />
+      <Field label="Cédula o NIT" value={facturacion.identificacion} onChange={v => actualizar('identificacion', v)} />
+      <Field label="Teléfono" value={facturacion.telefono} onChange={v => actualizar('telefono', v)} />
+      <Field label="Dirección" value={facturacion.direccion} onChange={v => actualizar('direccion', v)} />
+    </div>
+    <Field label="Correo" type="email" value={facturacion.correo} onChange={v => actualizar('correo', v)} />
+    <div className="two-cols">
+      <label>Tipo de trámite
+        <select value={facturacion.tipoTramite} onChange={e => actualizar('tipoTramite', e.target.value)}>
+          {tiposSolicitud.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+        </select>
+      </label>
+      <label>Medio de pago
+        <select value={facturacion.medioPago} onChange={e => actualizar('medioPago', e.target.value)}>
+          <option value="Transferencia">Transferencia</option>
+          <option value="Efectivo">Efectivo</option>
+        </select>
+      </label>
+    </div>
+    <label>Valor según el tipo de trámite
+      <input readOnly value={moneda(valor)} />
+    </label>
+    <p className="hint">Este valor se calcula con la tarifa configurada para el tipo de cliente/paquete y el tipo de trámite seleccionado.</p>
+  </div>;
+}
+
+function CitaEmbajadaPanel({ value, onChange }) {
+  return <div className="date-panel">
+    <label>Fecha de cita en embajada
+      <input type="date" value={value || ''} onChange={e => onChange(e.target.value)} />
+    </label>
+    <p className="hint">Selecciona únicamente la fecha. No se requiere registrar hora en esta etapa.</p>
+  </div>;
+}
+
+function Resumen({ calculo, fechaAsesoria, horaAsesoria, fechaCitaEmbajada }) {
   return <section className="panel summary">
     <h2>Resumen automático</h2>
     <Line label="Valor asesoría AmCham" value={moneda(calculo.tarifa)} />
@@ -876,6 +981,7 @@ function Resumen({ calculo, fechaAsesoria, horaAsesoria }) {
     <div className={claseEstado(calculo.estado)}>{calculo.estado}</div>
     <p className="hint">Documentos recibidos: {calculo.completos}/{calculo.requeridos.length}. El estado del proceso se actualiza según los documentos recibidos o la selección manual de la asesora.</p>
     {(fechaAsesoria || horaAsesoria) && <p className="hint"><strong>Asesoría:</strong> {fechaAsesoria || 'sin fecha'} {horaAsesoria || ''}</p>}
+    {fechaCitaEmbajada && <p className="hint"><strong>Cita embajada:</strong> {fechaCitaEmbajada}</p>}
   </section>;
 }
 

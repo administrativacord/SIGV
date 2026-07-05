@@ -111,3 +111,7 @@ header span { background: #e0ecff; color: #1d4ed8; padding: 8px 12px; border-rad
 .info-box strong { display: block; color: #0f172a; margin-bottom: 6px; }
 .info-box p { margin: 0 0 8px; color: #475569; font-size: 14px; line-height: 1.45; }
 .info-box .line:last-child { border-bottom: 0; }
+
+.facturacion-box, .date-panel { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+.date-panel label { margin-bottom: 8px; }
+.facturacion-box input[readonly] { background: #eef6ff; color: #0b5cab; font-weight: 900; cursor: default; }

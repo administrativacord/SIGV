@@ -1,20 +1,25 @@
-# SIGV Web - Fase 2.4 Costos informativos
+# SIGV Web - Fase 2.5 Facturación y cita embajada
 
 Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 
 ## Ajustes aplicados en esta versión
 
-- Se corrigió el manejo de los valores de envío de documentación, FedEx y derechos consulares.
-- Estos valores ahora quedan como **valores informativos para el cliente**.
-- Los valores informativos **no se suman** al valor de asesoría ni a la facturación de AmCham.
-- El resumen automático separa claramente:
-  - **Valor asesoría AmCham**.
-  - **Total a facturar por AmCham**.
-  - **Valores informativos para el cliente**.
-- En el Dashboard, la métrica pasó a llamarse **Facturación estimada AmCham**.
-- En la tabla de Casos, la columna pasó a llamarse **Facturación AmCham**.
-- En Configuración, la sección de costos adicionales ahora se llama **Valores informativos para el cliente**.
-- Se mantiene la edición de esos valores para que el equipo pueda actualizarlos cuando cambien, sin afectar los ingresos ni la facturación de la empresa.
+- En **Nuevo caso** y en **Casos** se reorganizó el flujo operativo.
+- **Observaciones y seguimiento** ya no tiene numeración.
+- **Observaciones y seguimiento** queda ubicado al final, justo antes de **Estado del Proceso**.
+- Se agregó el paso **6. Facturación** en Nuevo caso y en el detalle editable de Casos.
+- La sección **Facturación** incluye:
+  - Nombre.
+  - Cédula o NIT.
+  - Teléfono.
+  - Dirección.
+  - Correo.
+  - Tipo de trámite: Primera vez, Renovación, Actualización o Global Entry.
+  - Medio de pago: Transferencia o Efectivo.
+  - Valor calculado automáticamente según el tipo de trámite y la tarifa configurada.
+- Se agregó el paso **7. Fecha Cita embajada**.
+- La fecha de cita de embajada se registra mediante un selector de fecha, sin hora.
+- Los cambios se aplicaron tanto al formulario de creación como al formulario de edición del caso.
 
 ## Se mantiene desde fases anteriores
 
@@ -22,6 +27,8 @@ Sistema Integral de Gestión de Visas - AmCham Atlántico y Magdalena.
 - Listado editable de **Asesoras** conectado con:
   - **Nuevo caso** > Asesor responsable.
   - **Casos** > Detalle editable del caso > Asesor responsable.
+- Los valores de envío de documentación, FedEx y derechos consulares siguen siendo **valores informativos para el cliente**.
+- Esos valores informativos no se suman a la facturación de AmCham.
 - Base React + Vite limpia y ejecutable.
 - Login simple de prueba.
 - Dashboard con métricas operativas.
