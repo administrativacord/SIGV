@@ -47,3 +47,6 @@ th { background:#f8fafc; color:#334155; font-size: 13px; text-transform: upperca
 .pill { display:inline-block; padding: 7px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
 .notes { margin-top: 20px; background:#f8fafc; border-radius: 16px; padding: 16px; color:#334155; }
 @media (max-width: 900px) { .app { flex-direction: column; } .sidebar { width: 100%; height: auto; position: static; } .case-layout, .two-cols, .grid.cards { grid-template-columns: 1fr; } .summary { position: static; } }
+.required { display:inline-block; width:max-content; background:#fee2e2; color:#991b1b; font-size:11px; padding:3px 7px; border-radius:999px; font-weight:900; }
+.small-btn { background:#0b5cab; color:white; padding:8px 12px; border-radius:10px; }
+.secondary { background:#e2e8f0; color:#0f172a; margin-bottom:14px; }
