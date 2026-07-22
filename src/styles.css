@@ -4,7 +4,7 @@
   background: #f4f6fb;
 }
 * { box-sizing: border-box; }
-body { margin: 0; }
+body { margin: 0; overflow-x: hidden; }
 button, input, select, textarea { font: inherit; }
 button { border: 0; border-radius: 12px; padding: 12px 16px; cursor: pointer; font-weight: 800; transition: .15s ease; }
 button:hover { transform: translateY(-1px); }
@@ -200,3 +200,94 @@ button.danger.fit { width: fit-content; }
 .security-panel { border: 1px solid #bfdbfe; background: #f8fbff; }
 .security-panel p { color: #475569; line-height: 1.5; }
 .login-card .secondary { width: 100%; color: #0f172a; }
+
+/* Fase 5B · navegación plegable y Resumen del Proceso en tercera columna */
+.app { display: block; min-height: 100vh; }
+.content { width: 100%; padding: 24px 28px 36px; overflow: visible; }
+.header-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.menu-button { background: #0f172a; color: white; padding: 10px 14px; white-space: nowrap; flex: 0 0 auto; }
+.menu-button:hover { background: #1e40af; }
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  border-radius: 0;
+  padding: 0;
+  background: rgba(15, 23, 42, .46);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease;
+}
+.sidebar-backdrop.visible { opacity: 1; pointer-events: auto; }
+.sidebar-backdrop:hover { transform: none; }
+.sidebar-drawer {
+  position: fixed;
+  z-index: 80;
+  top: 0;
+  left: 0;
+  width: min(290px, 88vw);
+  height: 100vh;
+  padding: 22px;
+  background: #0f172a;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transform: translateX(-104%);
+  transition: transform .2s ease;
+  box-shadow: 18px 0 45px rgba(15, 23, 42, .28);
+}
+.sidebar-drawer.open { transform: translateX(0); }
+.sidebar-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.sidebar-heading .logo { margin: 0; }
+.sidebar-close { background: rgba(255,255,255,.1); color: white; width: 40px; height: 40px; padding: 0; font-size: 25px; line-height: 1; }
+.sidebar-drawer > button:not(.sidebar-close) { background: transparent; color: #cbd5e1; text-align: left; }
+.sidebar-drawer > button.active,
+.sidebar-drawer > button:not(.sidebar-close):hover { background: #1e40af; color: white; transform: none; }
+
+.process-page { display: grid; gap: 18px; }
+.process-page-header { padding-bottom: 8px; }
+.process-layout {
+  display: grid;
+  grid-template-columns: minmax(390px, 1.18fr) minmax(340px, 1fr) minmax(300px, .84fr);
+  gap: 18px;
+  align-items: start;
+}
+.process-column { min-width: 0; }
+.process-column > h2:not(:first-child) { margin-top: 26px; }
+.process-summary {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #dbeafe;
+}
+.process-summary .summary-grid { grid-template-columns: 1fr; }
+.process-summary .summary-grid .line,
+.process-summary .summary-grid .total { width: 100%; }
+.summary-intro { color: #64748b; margin: -6px 0 16px; line-height: 1.45; }
+.summary-members { display: grid; gap: 12px; margin-bottom: 16px; }
+.summary-member-card { border: 1px solid #dbeafe; background: #f8fbff; border-radius: 16px; padding: 13px; }
+.summary-member-title { display: inline-flex; width: fit-content; background: #dbeafe; color: #1d4ed8; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 900; margin-bottom: 4px; }
+.summary-member-card .line { padding: 9px 0; }
+.summary-member-card .line:last-of-type { border-bottom: 0; }
+.summary-member-card small { display: block; margin-top: 8px; line-height: 1.4; }
+
+@media (max-width: 1180px) {
+  .process-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .process-summary { grid-column: 1 / -1; position: static; max-height: none; overflow: visible; }
+  .process-summary .summary-grid { grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .content { padding: 16px; }
+  header { align-items: stretch; }
+  .header-left { align-items: flex-start; }
+  .menu-button { padding: 9px 11px; }
+  .process-layout { grid-template-columns: 1fr; }
+  .process-summary { grid-column: auto; }
+  .process-summary .summary-grid { grid-template-columns: 1fr; }
+}

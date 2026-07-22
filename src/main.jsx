@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5A.1 Web · Seguridad reconstruida';
-const BUILD_ID = '2026-07-21-05A1';
+const APP_VERSION = 'Fase 5B Web · Resumen del Proceso';
+const BUILD_ID = '2026-07-21-05B';
 
 
 const rolesSigv = {
@@ -733,6 +733,16 @@ function App() {
   const [seguridad, setSeguridad] = useState(() => normalizarSeguridad());
   const [requiereInicializacion, setRequiereInicializacion] = useState(false);
   const [inicializandoSeguridad, setInicializandoSeguridad] = useState(false);
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
+  useEffect(() => {
+    if (!menuAbierto) return undefined;
+    const cerrarConEscape = event => {
+      if (event.key === 'Escape') setMenuAbierto(false);
+    };
+    window.addEventListener('keydown', cerrarConEscape);
+    return () => window.removeEventListener('keydown', cerrarConEscape);
+  }, [menuAbierto]);
 
   useEffect(() => {
     const cancelar = onAuthStateChanged(auth, user => {
@@ -1307,22 +1317,41 @@ function App() {
     : vista === 'configuracion' ? 'Configuración'
     : 'Dashboard';
 
-  return <div className="app">
-    <aside className="sidebar">
-      <div className="logo">SIGV</div>
-      <button className={vista === 'dashboard' ? 'active' : ''} onClick={() => setVista('dashboard')}>Dashboard</button>
-      <button className={vista === 'nuevoCaso' ? 'active' : ''} onClick={() => setVista('nuevoCaso')}>Nueva asesoría</button>
-      <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => setVista('casos')}>Asesorías</button>
-      <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => setVista('plantillas')}>Plantillas</button>
-      {permisos.puedeEditarConfiguracion && <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => setVista('configuracion')}>Configuración</button>}
+  function navegarA(nuevaVista) {
+    setVista(nuevaVista);
+    setMenuAbierto(false);
+    if (nuevaVista !== 'detalleCaso') setCasoAbiertoId(null);
+  }
+
+  return <div className={`app ${menuAbierto ? 'menu-open' : ''}`}>
+    <button
+      type="button"
+      className={`sidebar-backdrop ${menuAbierto ? 'visible' : ''}`}
+      aria-label="Cerrar menú de navegación"
+      onClick={() => setMenuAbierto(false)}
+    />
+
+    <aside className={`sidebar-drawer ${menuAbierto ? 'open' : ''}`} aria-hidden={!menuAbierto}>
+      <div className="sidebar-heading">
+        <div className="logo">SIGV</div>
+        <button type="button" className="sidebar-close" onClick={() => setMenuAbierto(false)} aria-label="Cerrar menú">×</button>
+      </div>
+      <button className={vista === 'dashboard' ? 'active' : ''} onClick={() => navegarA('dashboard')}>Dashboard</button>
+      <button className={vista === 'nuevoCaso' ? 'active' : ''} onClick={() => navegarA('nuevoCaso')}>Nueva asesoría</button>
+      <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => navegarA('casos')}>Asesorías</button>
+      <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => navegarA('plantillas')}>Plantillas</button>
+      {permisos.puedeEditarConfiguracion && <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => navegarA('configuracion')}>Configuración</button>}
       <button onClick={cerrarSesion}>Cerrar sesión</button>
     </aside>
 
     <main className="content">
       <header>
-        <div>
-          <h1>{titulo}</h1>
-          <p>Sistema Integral de Gestión de Visas · AmCham Atlántico y Magdalena</p>
+        <div className="header-left">
+          <button type="button" className="menu-button" onClick={() => setMenuAbierto(true)} aria-expanded={menuAbierto}>☰ Menú</button>
+          <div>
+            <h1>{titulo}</h1>
+            <p>Sistema Integral de Gestión de Visas · AmCham Atlántico y Magdalena</p>
+          </div>
         </div>
         <span>{APP_VERSION} · {BUILD_ID}</span>
       </header>
@@ -1346,7 +1375,7 @@ function App() {
 
       {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} />}
 
-      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => setVista('casos')} onSave={actualizarCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
+      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => navegarA('casos')} onSave={actualizarCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
       {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">La asesoría seleccionada aún se está cargando o no existe.</div>}
 
@@ -1470,8 +1499,8 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
     setForm({ ...form, cantidad: nuevosIntegrantes.length, integrantes: nuevosIntegrantes, estadoManual: '' });
   }
 
-  return <form className="case-layout single-case-layout" onSubmit={guardarCaso}>
-    <section className="panel">
+  return <form className="process-layout" onSubmit={guardarCaso}>
+    <section className="panel process-column">
       <h2>1. Asesor responsable</h2>
       <AsesorSelect value={form.asesor} onChange={v => setForm({ ...form, asesor: v })} asesoras={config.asesoras} />
 
@@ -1482,7 +1511,9 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
       <p className="hint">Usa este campo cuando la asesoría sea de un grupo familiar o tenga varios solicitantes. Según la cantidad, se despliegan datos, solicitud y documentos para cada integrante.</p>
 
       <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
+    </section>
 
+    <section className="panel process-column">
       <h2>6. Asesoría</h2>
       <div className="two-cols">
         <label>Fecha tentativa de asesoría
@@ -1525,10 +1556,19 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
         </select>
       </label>
 
-      <Resumen calculo={calculo} facturacion={form.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={form.fechaAsesoria} horaAsesoria={form.horaAsesoria} fechaCitaEmbajada={form.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} compacto />
-
       <button className="primary" type="submit" disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar asesoría'}</button>
     </section>
+
+    <Resumen
+      calculo={calculo}
+      facturacion={form.facturacion}
+      tipoClienteKey={principal.tipoCliente}
+      config={config}
+      fechaAsesoria={form.fechaAsesoria}
+      horaAsesoria={form.horaAsesoria}
+      fechaCitaEmbajada={form.fechaCitaEmbajada}
+      cantidadIntegrantes={integrantes.length}
+    />
   </form>;
 }
 
@@ -1730,8 +1770,8 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
     setNuevoSeguimiento('');
   }
 
-  return <div className="detail-grid single-case-layout">
-    <section className="panel">
+  return <div className="process-page">
+    <section className="panel process-page-header">
       <button className="secondary" onClick={onBack}>← Volver a asesorías</button>
       <div className="section-title">
         <div>
@@ -1740,80 +1780,96 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
         </div>
         <span className={claseEstado(calc.estado)}>{calc.estado}</span>
       </div>
+    </section>
 
-      <h2>1. Asesor responsable</h2>
-      <AsesorSelect value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} asesoras={config.asesoras} />
+    <div className="process-layout">
+      <section className="panel process-column">
+        <h2>1. Asesor responsable</h2>
+        <AsesorSelect value={edit.asesor} onChange={v => setEdit({ ...edit, asesor: v })} asesoras={config.asesoras} />
 
-      <h2>2. Cantidad</h2>
-      <label>Cantidad de integrantes de la asesoría
-        <input type="number" min="1" max="30" value={integrantes.length} onChange={e => cambiarCantidad(e.target.value)} />
-      </label>
-      <p className="hint">Al aumentar la cantidad se habilitan nuevos campos de datos, solicitud y documentos. Al reducirla, se eliminan los últimos integrantes del formulario.</p>
-
-      <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
-
-      <h2>6. Asesoría</h2>
-      <div className="two-cols">
-        <label>Fecha tentativa de asesoría
-          <input type="date" value={edit.fechaAsesoria || ''} onChange={e => setEdit({ ...edit, fechaAsesoria: e.target.value })} />
+        <h2>2. Cantidad</h2>
+        <label>Cantidad de integrantes de la asesoría
+          <input type="number" min="1" max="30" value={integrantes.length} onChange={e => cambiarCantidad(e.target.value)} />
         </label>
-        <label>Hora tentativa
-          <input type="time" value={edit.horaAsesoria || ''} onChange={e => setEdit({ ...edit, horaAsesoria: e.target.value })} />
-        </label>
-      </div>
+        <p className="hint">Al aumentar la cantidad se habilitan nuevos campos de datos, solicitud y documentos. Al reducirla, se eliminan los últimos integrantes del formulario.</p>
 
-      <h2>7. Facturación</h2>
-      <FacturacionFields
-        data={edit.facturacion}
-        onChange={facturacion => setEdit({ ...edit, facturacion })}
+        <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
+      </section>
+
+      <section className="panel process-column">
+        <h2>6. Asesoría</h2>
+        <div className="two-cols">
+          <label>Fecha tentativa de asesoría
+            <input type="date" value={edit.fechaAsesoria || ''} onChange={e => setEdit({ ...edit, fechaAsesoria: e.target.value })} />
+          </label>
+          <label>Hora tentativa
+            <input type="time" value={edit.horaAsesoria || ''} onChange={e => setEdit({ ...edit, horaAsesoria: e.target.value })} />
+          </label>
+        </div>
+
+        <h2>7. Facturación</h2>
+        <FacturacionFields
+          data={edit.facturacion}
+          onChange={facturacion => setEdit({ ...edit, facturacion })}
+          tipoClienteKey={principal.tipoCliente}
+          tipoSolicitudKey={principal.tipoSolicitud}
+          datosCliente={{ nombre: principal.nombre, telefono: principal.telefono, correo: principal.email }}
+          config={config}
+          valorCaso={calc.totalPesos}
+          cantidadIntegrantes={integrantes.length}
+        />
+
+        <h2>8. Fecha Cita embajada</h2>
+        <label>Fecha Cita embajada
+          <input type="date" value={edit.fechaCitaEmbajada || ''} onChange={e => setEdit({ ...edit, fechaCitaEmbajada: e.target.value })} />
+        </label>
+
+        <h2>Observaciones y seguimiento</h2>
+        <label>Observación general
+          <textarea value={edit.observacion || ''} onChange={e => setEdit({ ...edit, observacion: e.target.value })} />
+        </label>
+        <label>Seguimiento actual
+          <textarea value={edit.seguimiento || ''} onChange={e => setEdit({ ...edit, seguimiento: e.target.value })} />
+        </label>
+
+        <h2>Estado del Proceso</h2>
+        <label>Estado actual
+          <select value={normalizarEstadoProceso(edit.estadoManual) || calc.estado} onChange={e => setEdit({ ...edit, estadoManual: e.target.value })}>
+            {estadosProceso.map(estado => <option key={estado} value={estado}>{estado}</option>)}
+          </select>
+        </label>
+
+        <div className="actions-row">
+          <button className="primary fit" onClick={() => guardar()} disabled={guardando || !permisos.puedeEditarCasos}>{guardando ? 'Guardando...' : 'Guardar cambios'}</button>
+          {permisos.puedeEliminarCasos && <button type="button" className="danger fit" onClick={() => onDelete?.(edit.id)} disabled={guardando}>Eliminar asesoría</button>}
+        </div>
+
+        <div className="collapsible-stack">
+          <details className="collapse-panel">
+            <summary>
+              <span>Nuevo seguimiento</span>
+              <small>Agregar una nota al historial de la asesoría</small>
+            </summary>
+            <div className="collapse-content">
+              <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
+              <button className="primary fit" onClick={agregarSeguimiento} disabled={!permisos.puedeEditarCasos}>Agregar al historial</button>
+            </div>
+          </details>
+          <Historial historial={edit.historial || []} />
+        </div>
+      </section>
+
+      <Resumen
+        calculo={calc}
+        facturacion={edit.facturacion}
         tipoClienteKey={principal.tipoCliente}
-        tipoSolicitudKey={principal.tipoSolicitud}
-        datosCliente={{ nombre: principal.nombre, telefono: principal.telefono, correo: principal.email }}
         config={config}
-        valorCaso={calc.totalPesos}
+        fechaAsesoria={edit.fechaAsesoria}
+        horaAsesoria={edit.horaAsesoria}
+        fechaCitaEmbajada={edit.fechaCitaEmbajada}
         cantidadIntegrantes={integrantes.length}
       />
-
-      <h2>8. Fecha Cita embajada</h2>
-      <label>Fecha Cita embajada
-        <input type="date" value={edit.fechaCitaEmbajada || ''} onChange={e => setEdit({ ...edit, fechaCitaEmbajada: e.target.value })} />
-      </label>
-
-      <h2>Observaciones y seguimiento</h2>
-      <label>Observación general
-        <textarea value={edit.observacion || ''} onChange={e => setEdit({ ...edit, observacion: e.target.value })} />
-      </label>
-      <label>Seguimiento actual
-        <textarea value={edit.seguimiento || ''} onChange={e => setEdit({ ...edit, seguimiento: e.target.value })} />
-      </label>
-
-      <h2>Estado del Proceso</h2>
-      <label>Estado actual
-        <select value={normalizarEstadoProceso(edit.estadoManual) || calc.estado} onChange={e => setEdit({ ...edit, estadoManual: e.target.value })}>
-          {estadosProceso.map(estado => <option key={estado} value={estado}>{estado}</option>)}
-        </select>
-      </label>
-      <Resumen calculo={calc} facturacion={edit.facturacion} tipoClienteKey={principal.tipoCliente} config={config} fechaAsesoria={edit.fechaAsesoria} horaAsesoria={edit.horaAsesoria} fechaCitaEmbajada={edit.fechaCitaEmbajada} cantidadIntegrantes={integrantes.length} compacto />
-
-      <div className="actions-row">
-        <button className="primary fit" onClick={() => guardar()} disabled={guardando || !permisos.puedeEditarCasos}>{guardando ? 'Guardando...' : 'Guardar cambios'}</button>
-        {permisos.puedeEliminarCasos && <button type="button" className="danger fit" onClick={() => onDelete?.(edit.id)} disabled={guardando}>Eliminar asesoría</button>}
-      </div>
-
-      <div className="collapsible-stack">
-        <details className="collapse-panel">
-          <summary>
-            <span>Nuevo seguimiento</span>
-            <small>Agregar una nota al historial de la asesoría</small>
-          </summary>
-          <div className="collapse-content">
-            <textarea value={nuevoSeguimiento} onChange={e => setNuevoSeguimiento(e.target.value)} placeholder="Ej: se llamó al cliente, falta soporte, asesoría reagendada..." />
-            <button className="primary fit" onClick={agregarSeguimiento} disabled={!permisos.puedeEditarCasos}>Agregar al historial</button>
-          </div>
-        </details>
-        <Historial historial={edit.historial || []} />
-      </div>
-    </section>
+    </div>
   </div>;
 }
 
@@ -1952,6 +2008,7 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
           <option value="">Seleccionar medio de pago</option>
           <option value="Transferencia">Transferencia</option>
           <option value="Efectivo">Efectivo</option>
+          <option value="Wompi">Wompi</option>
         </select>
       </label>
       <label>Valor
@@ -1970,32 +2027,47 @@ function Checklist({ tipoSolicitud, documentos, onChange }) {
   </div>;
 }
 
-function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada, cantidadIntegrantes = 1, compacto = false }) {
+function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada, cantidadIntegrantes = 1 }) {
   const facturacionNormalizada = normalizarFacturacion(facturacion, { tipoClienteKey }, config, calculo.totalPesos);
-  const clases = compacto ? 'panel summary summary-compact' : 'panel summary';
-  return <section className={clases}>
-    <h2>Resumen automático</h2>
+  const descuentoPorcentaje = Number(calculo.porcentajeDescuento) || 0;
+  return <section className="panel summary process-summary">
+    <h2>Resumen del Proceso</h2>
+    <p className="summary-intro">Vista actualizada automáticamente con la información registrada en la asesoría.</p>
+
+    <div className="summary-members">
+      {(calculo.detalleIntegrantes || []).map(detalle => {
+        const tarifaBase = Number(detalle.tarifa) || 0;
+        const valorFinalIntegrante = Math.round(tarifaBase * (1 - descuentoPorcentaje));
+        return <div className="summary-member-card" key={detalle.id || detalle.numero}>
+          <div className="summary-member-title">Integrante {detalle.numero}</div>
+          <Line label="Nombre" value={detalle.nombre || 'Pendiente'} />
+          <Line label="Tipo de solicitud" value={textoSolicitud(detalle.tipoSolicitud)} />
+          <Line label="Valor" value={moneda(valorFinalIntegrante)} />
+          {descuentoPorcentaje > 0 && <small>Tarifa base: {moneda(tarifaBase)} · descuento aplicado: {Math.round(descuentoPorcentaje * 100)}%</small>}
+        </div>;
+      })}
+    </div>
+
     <div className="summary-grid">
       <Line label="Integrantes" value={calculo.cantidad || cantidadIntegrantes || 1} />
       <Line label="Subtotal asesoría" value={moneda(calculo.subtotalAsesoria ?? calculo.tarifa)} />
       <Line label="Descuento por cantidad" value={calculo.valorDescuento ? `${calculo.descuentoDescripcion} · -${moneda(calculo.valorDescuento)}` : 'No aplica'} />
       <div className="total"><span>Total a facturar por AmCham</span><strong>{moneda(calculo.totalPesos)}</strong></div>
     </div>
-    {!compacto && calculo.detalleIntegrantes?.length > 1 && <div className="info-box muted">
-      <strong>Detalle por integrante</strong>
-      {calculo.detalleIntegrantes.map(detalle => <Line key={detalle.id} label={`Integrante ${detalle.numero} · ${detalle.nombre || textoSolicitud(detalle.tipoSolicitud)}`} value={`${textoSolicitud(detalle.tipoSolicitud)} · ${moneda(detalle.tarifa)}`} />)}
-    </div>}
+
     <div className="info-box">
       <strong>Valores informativos para el cliente</strong>
-      {!compacto && <p>Estos valores no ingresan a AmCham y no hacen parte de nuestra facturación. Se muestran únicamente para que el cliente los tenga en cuenta en su presupuesto y los pague directamente cuando corresponda.</p>}
+      <p>Estos valores no ingresan a AmCham y se muestran únicamente para el presupuesto del cliente.</p>
       <Line label="Envío Bogotá / Renovación" value={calculo.valorInformativoEnvioBogota ? moneda(calculo.valorInformativoEnvioBogota) : 'No aplica'} />
       <Line label="FedEx" value={calculo.fedex ? moneda(calculo.fedex) : 'No aplica / pendiente'} />
       <Line label="Derechos consulares" value={calculo.requiereDerechos ? `USD ${calculo.derechosConsularesUsd}` : 'No aplica'} />
     </div>
+
     <div className={claseEstado(calculo.estado)}>{calculo.estado}</div>
     <p className="hint">Documentos: {calculo.completos}/{calculo.requeridos.length}. El estado se calcula con todos los integrantes o la selección manual.</p>
     {(fechaAsesoria || horaAsesoria) && <p className="hint"><strong>Asesoría:</strong> {fechaAsesoria || 'sin fecha'} {horaAsesoria || ''}</p>}
-    {!compacto && facturacion && <div className="info-box muted">
+
+    {facturacion && <div className="info-box muted">
       <strong>Facturación</strong>
       <Line label="Nombre" value={facturacionNormalizada.nombre || 'Pendiente'} />
       <Line label="Tipo de trámite" value={textoSolicitud(facturacionNormalizada.tipoTramite)} />
@@ -2147,7 +2219,7 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
     const limpia = normalizarConfiguracion(borrador);
     try {
       await setConfig(limpia);
-      mostrarModal('Configuración guardada', 'Los cambios fueron guardados correctamente en Firestore y ya se reflejan en Nueva asesoría, Asesorías y Resumen automático.');
+      mostrarModal('Configuración guardada', 'Los cambios fueron guardados correctamente en Firestore y ya se reflejan en Nueva asesoría, Asesorías y Resumen del Proceso.');
     } catch {
       mostrarModal('Error al guardar', 'No se pudo guardar la configuración en Firestore. Revisa la conexión o las reglas de seguridad.');
     }
@@ -2255,7 +2327,7 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
       <div className="section-title">
         <div>
           <h2>Tarifas de asesoría</h2>
-          <p>Estos valores sí corresponden a ingresos/facturación de AmCham y alimentan el cálculo de Nueva asesoría, Asesorías y Resumen automático.</p>
+          <p>Estos valores sí corresponden a ingresos/facturación de AmCham y alimentan el cálculo de Nueva asesoría, Asesorías y Resumen del Proceso.</p>
         </div>
         <span className="pending-save">Pendiente guardar</span>
       </div>

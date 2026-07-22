@@ -1,118 +1,69 @@
-# SIGV Web · Fase 5A.1 · Seguridad reconstruida
+# SIGV Web · Fase 5B · Resumen del Proceso
 
-Esta versión fue reconstruida tomando como base directa el ZIP que estaba funcionando en producción: **Fase 4A.4 Web.zip**. Conserva las pantallas, cálculos, consecutivos, asesorías existentes y la colección técnica `casos`, pero reemplaza la seguridad dependiente del frontend por autorización real en Firestore.
+Esta versión continúa sobre **2.7 / Fase 5A.1 Seguridad reconstruida**. Conserva la seguridad real por roles, la colección técnica `casos`, los consecutivos desde `A0001`, los datos existentes y la compatibilidad con la instalación actual.
 
 ## Versión
 
-- Aplicación: `5.0.1-a`
-- Identificación visible: `Fase 5A.1 Web · Seguridad reconstruida`
-- Build: `2026-07-21-05A1`
+- Aplicación: `5.1.0`
+- Identificación visible: `Fase 5B Web · Resumen del Proceso`
+- Build: `2026-07-21-05B`
 
-## Cambios principales
+## Cambios funcionales
 
-### Seguridad real por roles
+### Navegación plegable
 
-Las reglas de Firestore validan el documento del usuario autenticado en:
+El panel de navegación dejó de ocupar una columna permanente. El botón **☰ Menú** abre un panel lateral superpuesto que puede cerrarse con el botón ×, haciendo clic fuera del menú o presionando Escape. Así el área principal aprovecha todo el ancho disponible en computador.
 
-```txt
-usuariosSigv/{correo-en-minúscula}
-```
+### Diseño de tres columnas
 
-Roles válidos:
+En **Nueva asesoría** y en el **Detalle de asesoría**, la pantalla de computador se organiza en:
 
-```txt
-administrador
-asesor
-```
+1. **Información e integrantes:** asesor responsable, cantidad, datos personales, tipo de solicitud y documentos.
+2. **Gestión del proceso:** fecha y hora de asesoría, facturación, cita de embajada, observaciones, estado, seguimiento e historial.
+3. **Resumen del Proceso:** resumen visible y actualizado mientras se diligencia o edita la asesoría.
 
-Todos los usuarios deben tener `activo: true` para utilizar la aplicación.
+En pantallas medianas se adapta a dos columnas y en celulares se muestra una sola columna para conservar legibilidad.
 
-### Permisos
+### Resumen del Proceso
 
-**Administrador activo**
+Se reemplazó el nombre **Resumen automático** por **Resumen del Proceso**. La tercera columna muestra, para cada integrante:
 
-- Lee, crea y actualiza asesorías.
-- Elimina asesorías con la confirmación existente.
-- Modifica configuración y tarifas.
-- Consulta y administra usuarios y roles.
-- Ejecuta diagnósticos de Firestore.
+- Nombre.
+- Tipo de solicitud.
+- Valor individual.
+- Tarifa base y porcentaje de descuento cuando aplica.
 
-**Asesor activo**
+También conserva cantidad de integrantes, subtotal, descuento grupal, total a facturar, valores informativos, estado, documentos, programación, facturación y fecha de cita de embajada.
 
-- Lee, crea y actualiza asesorías.
-- Cambia estados y agrega seguimientos.
-- No elimina asesorías.
-- No modifica configuración, tarifas ni usuarios.
+### Medio de pago Wompi
 
-**Usuario sin perfil, inactivo o con rol inválido**
+Se agregó **Wompi** al selector de medio de pago en Facturación. Los registros anteriores con Transferencia, Efectivo o campos vacíos mantienen compatibilidad.
 
-- No recibe permisos temporales.
-- No puede cargar asesorías ni configuración.
-- Ve una pantalla de acceso bloqueado con una explicación clara.
+## Seguridad conservada
 
-### Primer Administrador controlado
+Las reglas siguen validando el perfil en `usuariosSigv/{correo-en-minúscula}` y el documento `configuracion/seguridad`:
 
-La aplicación utiliza el documento:
+- Administrador activo: gestión total, configuración, usuarios y eliminación de asesorías.
+- Asesor activo: lectura, creación y actualización operativa, sin configuración ni eliminación.
+- Usuarios sin perfil, inactivos o con rol inválido: acceso bloqueado.
+- Inicialización controlada del primer Administrador y protección del Administrador principal.
 
-```txt
-configuracion/seguridad
-```
+Lee `MIGRACION_FASE_5.md` antes de publicar las reglas estrictas en una instalación que todavía no haya completado la migración de seguridad.
 
-Campos principales:
-
-```json
-{
-  "primerAdministradorConfigurado": true,
-  "primerAdministradorEmail": "correo@empresa.com",
-  "inicializacionCerrada": true,
-  "versionSeguridad": "5A.1"
-}
-```
-
-Si ya existe un perfil Administrador activo, SIGV crea automáticamente este documento al iniciar sesión. Si la instalación no tiene perfil ni configuración de seguridad, aparece una pantalla para registrar de forma atómica al primer Administrador y cerrar la inicialización.
-
-Después del cierre, un usuario creado solamente en Firebase Authentication no podrá ingresar hasta que un Administrador lo registre en `usuariosSigv`.
-
-### Protección del Administrador principal
-
-El correo registrado en `primerAdministradorEmail` no puede quedar inactivo ni cambiarse a Asesor. El documento de seguridad tampoco puede eliminarse ni cambiar de propietario desde la aplicación.
-
-### Carga segura
-
-Se eliminó el comportamiento que convertía un error de conexión o la ausencia de perfil en acceso de Administrador. Si Firestore no puede validar el perfil, la aplicación bloquea los permisos y permite reintentar.
-
-### Dependencias fijas
-
-Se eliminó `latest`. Las versiones quedan fijadas en `package.json` y se agregó `npm run check` para revisar estructura, archivos prohibidos y controles mínimos de seguridad.
-
-### Paginación REST
-
-La lectura de colecciones por Firestore REST ahora recorre todas las páginas disponibles, evitando limitar silenciosamente la lista a la primera página.
-
-## Instalación local
+## Instalación y validación
 
 Requiere Node.js 20.19 o superior.
 
 ```bash
 npm install --package-lock=false
 npm run check
-npm run dev
-```
-
-## Construcción
-
-```bash
 npm run build
 ```
 
-## Publicación
-
-Lee primero `MIGRACION_FASE_5.md`. El orden de publicación es importante para comprobar el Administrador antes de activar las reglas estrictas.
-
-Para publicar solamente las reglas:
+Para desarrollo:
 
 ```bash
-firebase deploy --only firestore:rules
+npm run dev
 ```
 
 ## Archivos excluidos
