@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.1 Web · Estado de la app';
-const BUILD_ID = '2026-07-21-05C1';
+const APP_VERSION = 'Fase 5C.2 Web · Datos y solicitud unificados';
+const BUILD_ID = '2026-07-21-05C2';
 
 
 const rolesSigv = {
@@ -1802,7 +1802,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
 
       <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
 
-      <h2>6. Asesoría</h2>
+      <h2>5. Asesoría</h2>
       <div className="two-cols">
         <label>Fecha tentativa de asesoría
           <input type="date" value={form.fechaAsesoria} onChange={e => setForm({ ...form, fechaAsesoria: e.target.value })} />
@@ -1812,7 +1812,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
         </label>
       </div>
 
-      <h2>7. Facturación</h2>
+      <h2>6. Facturación</h2>
       <FacturacionFields
         data={form.facturacion}
         onChange={facturacion => setForm({ ...form, facturacion })}
@@ -1824,7 +1824,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
         cantidadIntegrantes={integrantes.length}
       />
 
-      <h2>8. Fecha Cita embajada</h2>
+      <h2>7. Fecha Cita embajada</h2>
       <label>Fecha Cita embajada
         <input type="date" value={form.fechaCitaEmbajada} onChange={e => setForm({ ...form, fechaCitaEmbajada: e.target.value })} />
       </label>
@@ -1876,22 +1876,20 @@ function IntegrantesSecciones({ integrantes, onChange, config }) {
   }
 
   return <>
-    <h2>3. Datos del cliente</h2>
+    <h2>3. Datos del cliente y tipo de solicitud</h2>
     <div className="integrantes-stack">
       {lista.map((integrante, indice) => <div className="integrante-card" key={integrante.id}>
-        <div className="integrante-title">Integrante {indice + 1}</div>
+        <div className="integrante-title">Integrante {indice + 1} · {integrante.nombre || 'Sin nombre'}</div>
         <div className="two-cols">
           <Field required label="Nombre completo" value={integrante.nombre} onChange={v => actualizarIntegrante(indice, { nombre: v })} />
           <Field required label="Teléfono" value={integrante.telefono} onChange={v => actualizarIntegrante(indice, { telefono: v })} />
         </div>
         <Field label="Email" type="email" value={integrante.email} onChange={v => actualizarIntegrante(indice, { email: v })} />
-      </div>)}
-    </div>
 
-    <h2>4. Tipo de solicitud</h2>
-    <div className="integrantes-stack">
-      {lista.map((integrante, indice) => <div className="integrante-card" key={`${integrante.id}-solicitud`}>
-        <div className="integrante-title">Integrante {indice + 1} · {integrante.nombre || 'Sin nombre'}</div>
+        <div className="integrante-subsection">
+          <strong>Tipo de solicitud</strong>
+          <span>Selecciona el paquete y el trámite correspondiente a este integrante.</span>
+        </div>
         <div className="two-cols">
           <label>Tipo de cliente / paquete
             <select value={integrante.tipoCliente} onChange={e => actualizarIntegrante(indice, { tipoCliente: e.target.value, tipoClienteKey: e.target.value })}>
@@ -1914,7 +1912,7 @@ function IntegrantesSecciones({ integrantes, onChange, config }) {
       </div>)}
     </div>
 
-    <h2>5. Documentos recibidos</h2>
+    <h2>4. Documentos recibidos</h2>
     <div className="integrantes-stack">
       {lista.map((integrante, indice) => <div className="integrante-card" key={`${integrante.id}-docs`}>
         <div className="integrante-title">Integrante {indice + 1} · {integrante.nombre || textoSolicitud(integrante.tipoSolicitud)}</div>
@@ -2083,7 +2081,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
 
         <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
 
-        <h2>6. Asesoría</h2>
+        <h2>5. Asesoría</h2>
         <div className="two-cols">
           <label>Fecha tentativa de asesoría
             <input type="date" value={edit.fechaAsesoria || ''} onChange={e => setEdit({ ...edit, fechaAsesoria: e.target.value })} />
@@ -2093,7 +2091,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
           </label>
         </div>
 
-        <h2>7. Facturación</h2>
+        <h2>6. Facturación</h2>
         <FacturacionFields
           data={edit.facturacion}
           onChange={facturacion => setEdit({ ...edit, facturacion })}
@@ -2105,7 +2103,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
           cantidadIntegrantes={integrantes.length}
         />
 
-        <h2>8. Fecha Cita embajada</h2>
+        <h2>7. Fecha Cita embajada</h2>
         <label>Fecha Cita embajada
           <input type="date" value={edit.fechaCitaEmbajada || ''} onChange={e => setEdit({ ...edit, fechaCitaEmbajada: e.target.value })} />
         </label>

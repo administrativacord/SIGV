@@ -24,7 +24,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.1') errors.push(`La versión esperada es 5.2.1 y se encontró ${pkg.version}`);
+if (pkg.version !== '5.2.2') errors.push(`La versión esperada es 5.2.2 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -44,7 +44,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C.1 Web · Estado de la app",
+  "Fase 5C.2 Web · Datos y solicitud unificados",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -64,6 +64,12 @@ for (const expected of [
   'className="app-status-grid"',
   'Compilación {BUILD_ID}',
   'Comprobación de Firestore',
+  '>3. Datos del cliente y tipo de solicitud<',
+  'className="integrante-subsection"',
+  '>4. Documentos recibidos<',
+  '>5. Asesoría<',
+  '>6. Facturación<',
+  '>7. Fecha Cita embajada<',
 ]) {
   if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
 }
@@ -91,6 +97,7 @@ const processColumnCount = (main.match(/className="panel process-column"/g) || [
 if (processLayoutCount !== 2) errors.push(`Se esperaban 2 process-layout y se encontraron ${processLayoutCount}`);
 if (processColumnCount !== 2) errors.push(`Se esperaba una sola columna de proceso por pantalla (2 en total) y se encontraron ${processColumnCount}`);
 if (styles.includes('minmax(390px, 1.18fr) minmax(340px, 1fr) minmax(300px, .84fr)')) errors.push('Persistió la cuadrícula anterior de tres columnas');
+if (main.includes('>3. Datos del cliente<') || main.includes('>4. Tipo de solicitud<')) errors.push('Persistieron los pasos separados de datos y solicitud');
 
 if (errors.length) {
   console.error('Validación SIGV fallida:');
@@ -98,4 +105,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C.1 aprobada.');
+console.log('Validación SIGV Fase 5C.2 aprobada.');

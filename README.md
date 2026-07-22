@@ -1,12 +1,22 @@
-# SIGV Web · Fase 5C.1 · Estado de la app
+# SIGV Web · Fase 5C.2 · Datos y solicitud unificados
 
-Esta versión continúa sobre **2.9 / Fase 5C** y limpia la interfaz principal concentrando la información técnica en una nueva opción del menú llamada **Estado de la app**.
+Esta versión continúa sobre **2.9.1 / Fase 5C.1** y simplifica el formulario uniendo los datos del cliente y el tipo de solicitud dentro de una sola tarjeta por integrante.
 
 ## Versión
 
-- Aplicación: `5.2.1`
-- Identificación: `Fase 5C.1 Web · Estado de la app`
-- Build: `2026-07-21-05C1`
+- Aplicación: `5.2.2`
+- Identificación: `Fase 5C.2 Web · Datos y solicitud unificados`
+- Build: `2026-07-21-05C2`
+
+## Formulario simplificado
+
+Los pasos anteriores **3. Datos del cliente** y **4. Tipo de solicitud** se unificaron como:
+
+- **3. Datos del cliente y tipo de solicitud**
+
+Cada integrante utiliza una sola tarjeta con nombre, teléfono, correo, tipo de cliente o paquete, tipo de solicitud y FedEx cuando aplica. Los pasos posteriores fueron renumerados: Documentos recibidos 4, Asesoría 5, Facturación 6 y Fecha Cita embajada 7.
+
+No se modificó la estructura de los datos ni la forma de guardar en Firestore.
 
 ## Limpieza de la interfaz
 

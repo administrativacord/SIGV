@@ -1,9 +1,12 @@
-# Validación final · Fase 5C.1
+# Validación final · Fase 5C.2
 
 Validaciones realizadas:
 
-- Base oficial: `2.9_SIGV_Web_Fase_5C_Calendario_Ciudad.zip`.
-- Nueva opción de navegación **Estado de la app**.
+- Base oficial: `2.9.1_SIGV_Web_Fase_5C1_Estado_de_la_App.zip`.
+- Pasos 3 y 4 unidos como **3. Datos del cliente y tipo de solicitud**.
+- Una sola tarjeta por integrante para datos personales y selección del trámite.
+- Pasos siguientes renumerados del 4 al 7.
+- Nueva opción de navegación **Estado de la app** conservada.
 - Información técnica retirada del encabezado y las pantallas operativas.
 - Versión, build, conexión, seguridad, usuario y rol concentrados en la nueva sección.
 - Prueba Firestore y su resultado ubicados únicamente en Estado de la app.

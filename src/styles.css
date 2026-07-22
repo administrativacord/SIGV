@@ -410,3 +410,21 @@ button.calendar-cell:hover { transform: none; background: #f8fbff; }
   .app-status-intro, .app-diagnostic-panel .section-title { flex-direction: column; align-items: flex-start; }
   .app-status-grid { grid-template-columns: 1fr; }
 }
+
+
+/* Fase 5C.2 · Datos del cliente y tipo de solicitud en una sola tarjeta */
+.integrante-subsection {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 12px;
+  padding-top: 13px;
+  border-top: 1px solid #dbe4ef;
+}
+.integrante-subsection strong { color: #0f172a; font-size: 14px; }
+.integrante-subsection span { color: #64748b; font-size: 12px; text-align: right; line-height: 1.35; }
+@media (max-width: 680px) {
+  .integrante-subsection { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .integrante-subsection span { text-align: left; }
+}

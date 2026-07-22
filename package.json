@@ -1,6 +1,6 @@
 {
-  "name": "sigv-web-fase-5c1-estado-app",
-  "version": "5.2.1",
+  "name": "sigv-web-fase-5c2-datos-solicitud-unificados",
+  "version": "5.2.2",
   "private": true,
   "type": "module",
   "engines": {
