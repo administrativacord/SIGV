@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C Web · Calendario mensual y ciudad';
-const BUILD_ID = '2026-07-21-05C';
+const APP_VERSION = 'Fase 5C.1 Web · Estado de la app';
+const BUILD_ID = '2026-07-21-05C1';
 
 
 const rolesSigv = {
@@ -135,7 +135,7 @@ function puedeVerVista(vista, permisos) {
   if (!permisos?.activo) return false;
   if (vista === 'configuracion') return permisos.puedeEditarConfiguracion;
   if (vista === 'nuevoCaso') return permisos.puedeCrearCasos;
-  return ['dashboard', 'casos', 'detalleCaso', 'plantillas'].includes(vista);
+  return ['dashboard', 'casos', 'detalleCaso', 'plantillas', 'estadoApp'].includes(vista);
 }
 
 function conTiempoLimite(promesa, ms, mensaje) {
@@ -1412,6 +1412,7 @@ function App() {
     : vista === 'detalleCaso' ? 'Detalle y seguimiento de la asesoría'
     : vista === 'plantillas' ? 'Plantillas y respuestas rápidas'
     : vista === 'configuracion' ? 'Configuración'
+    : vista === 'estadoApp' ? 'Estado de la app'
     : 'Dashboard';
 
   function navegarA(nuevaVista) {
@@ -1438,6 +1439,7 @@ function App() {
       <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => navegarA('casos')}>Asesorías</button>
       <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => navegarA('plantillas')}>Plantillas</button>
       {permisos.puedeEditarConfiguracion && <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => navegarA('configuracion')}>Configuración</button>}
+      <button className={vista === 'estadoApp' ? 'active' : ''} onClick={() => navegarA('estadoApp')}>Estado de la app{errorConexion ? <span className="nav-alert-dot" title="Hay una novedad técnica" /> : null}</button>
       <button onClick={cerrarSesion}>Cerrar sesión</button>
     </aside>
 
@@ -1450,21 +1452,9 @@ function App() {
             <p>Sistema Integral de Gestión de Visas · AmCham Atlántico y Magdalena</p>
           </div>
         </div>
-        <span>{APP_VERSION} · {BUILD_ID}</span>
+        {guardando && <span className="save-indicator">Guardando...</span>}
       </header>
-
-      <div className="connection-row">
-        <span className="pill ok">Firebase conectado</span>
-        <span className={seguridad.primerAdministradorConfigurado ? 'pill ok' : 'pill warn'}>{seguridad.primerAdministradorConfigurado ? 'Seguridad activa' : 'Seguridad pendiente'}</span>
-        <span className="pill info">Rol: {rolesSigv[permisos.rol]?.label || 'Sin rol'}</span>
-        <small>{perfil?.nombre || usuarioAuth?.email} · {usuarioAuth?.email}</small>
-        {guardando && <small>Guardando cambios...</small>}
-        <button className="mini-button" type="button" onClick={ejecutarDiagnosticoFirestore}>Probar Firestore</button>
-      </div>
-
-      {diagnostico && <div className="alert-box diagnostic">{diagnostico}</div>}
-      {errorConexion && <div className="alert-box">{errorConexion}</div>}
-      {cargando && <div className="empty">Cargando información desde Firestore...</div>}
+      {cargando && <div className="empty">Cargando información...</div>}
 
       {!cargando && vista === 'dashboard' && <Dashboard casos={casos} onOpen={abrirCaso} />}
 
@@ -1479,7 +1469,66 @@ function App() {
       {!cargando && vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
 
       {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} onResetRoles={reiniciarRolesSigv} guardando={guardando} perfilActual={perfil} seguridad={seguridad} onActivateSecurity={activarSeguridadManual} />}
+
+      {!cargando && vista === 'estadoApp' && <EstadoApp perfil={perfil} usuarioAuth={usuarioAuth} permisos={permisos} seguridad={seguridad} diagnostico={diagnostico} errorConexion={errorConexion} guardando={guardando} onTest={ejecutarDiagnosticoFirestore} />}
     </main>
+  </div>;
+}
+
+
+function EstadoApp({ perfil, usuarioAuth, permisos, seguridad, diagnostico, errorConexion, guardando, onTest }) {
+  const seguridadActiva = seguridad?.primerAdministradorConfigurado === true;
+  const nombreUsuario = perfil?.nombre || usuarioAuth?.displayName || usuarioAuth?.email || 'Usuario SIGV';
+  const correoUsuario = usuarioAuth?.email || perfil?.email || '';
+  const rolUsuario = rolesSigv[permisos?.rol]?.label || 'Sin rol asignado';
+
+  return <div className="app-status-page">
+    <section className="panel app-status-intro">
+      <div>
+        <h2>Estado de la app</h2>
+        <p>Información de funcionamiento y soporte de SIGV. Estos datos se concentran aquí para mantener limpias las demás pantallas.</p>
+      </div>
+      <span className={errorConexion ? 'pill warn' : 'pill ok'}>{errorConexion ? 'Revisar estado' : 'Funcionamiento normal'}</span>
+    </section>
+
+    <div className="app-status-grid">
+      <section className="panel status-card">
+        <span className="status-label">Versión instalada</span>
+        <strong>{APP_VERSION}</strong>
+        <small>Compilación {BUILD_ID}</small>
+      </section>
+
+      <section className="panel status-card">
+        <span className="status-label">Conexión de datos</span>
+        <strong>Firebase conectado</strong>
+        <small>La sesión está autenticada y SIGV pudo cargar la información.</small>
+      </section>
+
+      <section className="panel status-card">
+        <span className="status-label">Seguridad</span>
+        <strong>{seguridadActiva ? 'Seguridad activa' : 'Seguridad pendiente'}</strong>
+        <small>{seguridadActiva ? 'La inicialización del primer Administrador está cerrada.' : 'La configuración inicial todavía requiere revisión.'}</small>
+      </section>
+
+      <section className="panel status-card">
+        <span className="status-label">Sesión actual</span>
+        <strong>{nombreUsuario}</strong>
+        <small>{correoUsuario}</small>
+        <span className="status-role">Rol: {rolUsuario}</span>
+      </section>
+    </div>
+
+    <section className="panel app-diagnostic-panel">
+      <div className="section-title">
+        <div>
+          <h2>Comprobación de Firestore</h2>
+          <p>Úsala únicamente cuando necesites verificar la conexión o compartir un diagnóstico con soporte.</p>
+        </div>
+        <button className="mini-button" type="button" onClick={onTest} disabled={guardando}>Probar Firestore</button>
+      </div>
+      {diagnostico ? <div className="alert-box diagnostic">{diagnostico}</div> : <div className="empty compact-empty">Aún no se ha ejecutado una prueba durante esta sesión.</div>}
+      {errorConexion && <div className="alert-box">{errorConexion}</div>}
+    </section>
   </div>;
 }
 

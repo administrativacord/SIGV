@@ -24,7 +24,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.0') errors.push(`La versión esperada es 5.2.0 y se encontró ${pkg.version}`);
+if (pkg.version !== '5.2.1') errors.push(`La versión esperada es 5.2.1 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -44,7 +44,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C Web · Calendario mensual y ciudad",
+  "Fase 5C.1 Web · Estado de la app",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -58,6 +58,12 @@ for (const expected of [
   'Field label="Ciudad"',
   'facturacion.ciudad ||',
   'fechaIso: ahora.toISOString()',
+  'function EstadoApp',
+  "vista === 'estadoApp'",
+  '>Estado de la app<',
+  'className="app-status-grid"',
+  'Compilación {BUILD_ID}',
+  'Comprobación de Firestore',
 ]) {
   if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
 }
@@ -71,6 +77,11 @@ for (const expected of [
   '.calendar-grid',
   '.calendar-created-count',
   '.process-summary { font-size: 13px; padding: 17px; }',
+  '.app-status-page',
+  '.app-status-grid',
+  '.status-card',
+  '.nav-alert-dot',
+  '.save-indicator',
 ]) {
   if (!styles.includes(expected)) errors.push(`Los estilos de Fase 5C no contienen: ${expected}`);
 }
@@ -87,4 +98,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C aprobada.');
+console.log('Validación SIGV Fase 5C.1 aprobada.');
