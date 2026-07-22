@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5B Web · Resumen del Proceso';
-const BUILD_ID = '2026-07-21-05B';
+const APP_VERSION = 'Fase 5B.1 Web · Diseño de dos columnas';
+const BUILD_ID = '2026-07-21-05B1';
 
 
 const rolesSigv = {
@@ -1511,9 +1511,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
       <p className="hint">Usa este campo cuando la asesoría sea de un grupo familiar o tenga varios solicitantes. Según la cantidad, se despliegan datos, solicitud y documentos para cada integrante.</p>
 
       <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
-    </section>
 
-    <section className="panel process-column">
       <h2>6. Asesoría</h2>
       <div className="two-cols">
         <label>Fecha tentativa de asesoría
@@ -1794,9 +1792,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
         <p className="hint">Al aumentar la cantidad se habilitan nuevos campos de datos, solicitud y documentos. Al reducirla, se eliminan los últimos integrantes del formulario.</p>
 
         <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
-      </section>
 
-      <section className="panel process-column">
         <h2>6. Asesoría</h2>
         <div className="two-cols">
           <label>Fecha tentativa de asesoría
