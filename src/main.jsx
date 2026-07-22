@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5B.1 Web · Diseño de dos columnas';
-const BUILD_ID = '2026-07-21-05B1';
+const APP_VERSION = 'Fase 5C Web · Calendario mensual y ciudad';
+const BUILD_ID = '2026-07-21-05C';
 
 
 const rolesSigv = {
@@ -175,6 +175,7 @@ function crearFacturacion(tipoTramite = 'primeraVez') {
     cedulaNit: '',
     telefono: '',
     direccion: '',
+    ciudad: '',
     correo: '',
     tipoTramite,
     medioPago: '',
@@ -425,11 +426,96 @@ function inicialFormulario() {
   };
 }
 
-function fechaColombia() {
-  return new Date().toLocaleString('es-CO', {
+const ZONA_HORARIA_COLOMBIA = 'America/Bogota';
+
+function fechaColombia(fecha = new Date()) {
+  return fecha.toLocaleString('es-CO', {
+    timeZone: ZONA_HORARIA_COLOMBIA,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
+}
+
+function partesFechaColombia(fecha = new Date()) {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ZONA_HORARIA_COLOMBIA,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(fecha);
+  const valores = Object.fromEntries(partes.map(parte => [parte.type, parte.value]));
+  const year = Number(valores.year);
+  const month = Number(valores.month);
+  const day = Number(valores.day);
+  return { year, month, day, clave: `${valores.year}-${valores.month}-${valores.day}` };
+}
+
+function claveFechaDesdeValor(valor) {
+  if (valor === null || valor === undefined || valor === '') return '';
+  if (typeof valor === 'number' && Number.isFinite(valor)) return partesFechaColombia(new Date(valor)).clave;
+  if (valor instanceof Date && !Number.isNaN(valor.getTime())) return partesFechaColombia(valor).clave;
+
+  const texto = String(valor).trim();
+  const isoSimple = texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:T|$)/);
+  if (isoSimple) {
+    const fecha = new Date(texto);
+    if (!Number.isNaN(fecha.getTime()) && texto.includes('T')) return partesFechaColombia(fecha).clave;
+    return `${isoSimple[1]}-${isoSimple[2]}-${isoSimple[3]}`;
+  }
+
+  const formatoColombia = texto.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (formatoColombia) {
+    const [, dia, mes, year] = formatoColombia;
+    return `${year}-${String(Number(mes)).padStart(2, '0')}-${String(Number(dia)).padStart(2, '0')}`;
+  }
+
+  const fecha = new Date(texto);
+  return Number.isNaN(fecha.getTime()) ? '' : partesFechaColombia(fecha).clave;
+}
+
+function claveCreacionCaso(caso = {}) {
+  const directa = claveFechaDesdeValor(caso.createdAtIso) || claveFechaDesdeValor(caso.createdAtMs);
+  if (directa) return directa;
+  const eventoCreacion = (caso.historial || []).find(item => normalizar(item.tipo) === 'creacion');
+  return claveFechaEvento(eventoCreacion);
+}
+
+function claveFechaEvento(item = {}) {
+  return claveFechaDesdeValor(item.fechaIso) || claveFechaDesdeValor(item.fechaMs) || claveFechaDesdeValor(item.fecha);
+}
+
+function fechaLargaDesdeClave(clave = '') {
+  const [year, month, day] = clave.split('-').map(Number);
+  if (!year || !month || !day) return 'Fecha seleccionada';
+  return new Intl.DateTimeFormat('es-CO', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: ZONA_HORARIA_COLOMBIA,
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
+function fechaEventoLegible(item = {}) {
+  if (item.fecha) return item.fecha;
+  const fecha = new Date(item.fechaIso || item.fechaMs || '');
+  return Number.isNaN(fecha.getTime()) ? 'Hora no disponible' : fechaColombia(fecha);
+}
+
+function marcaTiempoEvento(item = {}) {
+  const directa = Number(item.fechaMs) || Date.parse(item.fechaIso || '');
+  if (Number.isFinite(directa) && directa > 0) return directa;
+  const texto = String(item.fecha || '');
+  const coincidencia = texto.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4}),?\s*(\d{1,2}):(\d{2})\s*(a\.?\s*m\.?|p\.?\s*m\.?)?/i);
+  if (!coincidencia) return 0;
+  let [, dia, mes, year, hora, minuto, periodo] = coincidencia;
+  let horas = Number(hora);
+  if (periodo) {
+    const pm = normalizar(periodo).startsWith('p');
+    if (pm && horas < 12) horas += 12;
+    if (!pm && horas === 12) horas = 0;
+  }
+  return Date.UTC(Number(year), Number(mes) - 1, Number(dia), horas + 5, Number(minuto));
 }
 
 function moneda(valor) {
@@ -570,6 +656,7 @@ function normalizarFacturacion(facturacion = {}, data = {}, config = configuraci
     cedulaNit: facturacion.cedulaNit || '',
     telefono: facturacion.telefono || '',
     direccion: facturacion.direccion || '',
+    ciudad: facturacion.ciudad || '',
     correo: facturacion.correo || '',
     tipoTramite,
     medioPago: facturacion.medioPago || '',
@@ -586,6 +673,7 @@ function generarTextoFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', 
     `Cédula o NIT: ${datos.cedulaNit || 'Pendiente'}`,
     `Teléfono: ${datos.telefono || 'Pendiente'}`,
     `Dirección: ${datos.direccion || 'Pendiente'}`,
+    `Ciudad: ${datos.ciudad || 'Pendiente'}`,
     `Correo: ${datos.correo || 'Pendiente'}`,
     `Tipo de trámite: ${textoSolicitud(datos.tipoTramite)}`,
     `Medio de pago: ${datos.medioPago || 'Pendiente'}`,
@@ -656,7 +744,16 @@ function generarId(casos) {
 }
 
 function evento(tipo, texto, asesor = 'Sistema') {
-  return { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, fecha: fechaColombia(), tipo, texto, asesor };
+  const ahora = new Date();
+  return {
+    id: `${ahora.getTime()}-${Math.random().toString(16).slice(2)}`,
+    fecha: fechaColombia(ahora),
+    fechaIso: ahora.toISOString(),
+    fechaMs: ahora.getTime(),
+    tipo,
+    texto,
+    asesor,
+  };
 }
 
 const casosIniciales = [
@@ -1475,6 +1572,9 @@ function Dashboard({ casos, onOpen }) {
       <Card title="Asesorías agendadas" value={agendados} />
       <Card title="Facturación estimada AmCham" value={moneda(facturado)} />
     </section>
+
+    <CalendarioAsesorias casos={casos} onOpen={onOpen} />
+
     <section className="panel mt">
       <div className="section-title">
         <h2>Asesorías recientes</h2>
@@ -1483,6 +1583,147 @@ function Dashboard({ casos, onOpen }) {
       <CaseTable casos={recientes} onOpen={onOpen} compacto />
     </section>
   </>;
+}
+
+function CalendarioAsesorias({ casos, onOpen }) {
+  const hoy = partesFechaColombia(new Date());
+  const [mesVisible, setMesVisible] = useState({ year: hoy.year, month: hoy.month });
+  const [diaSeleccionado, setDiaSeleccionado] = useState('');
+
+  const asesoriasPorDia = useMemo(() => {
+    const mapa = new Map();
+    for (const caso of casos) {
+      const clave = claveCreacionCaso(caso);
+      if (!clave) continue;
+      if (!mapa.has(clave)) mapa.set(clave, []);
+      mapa.get(clave).push(caso);
+    }
+    for (const lista of mapa.values()) lista.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+    return mapa;
+  }, [casos]);
+
+  const actividadPorDia = useMemo(() => {
+    const mapa = new Map();
+    for (const caso of casos) {
+      for (const item of caso.historial || []) {
+        const clave = claveFechaEvento(item);
+        if (!clave) continue;
+        if (!mapa.has(clave)) mapa.set(clave, []);
+        mapa.get(clave).push({ caso, item });
+      }
+    }
+    for (const lista of mapa.values()) lista.sort((a, b) => marcaTiempoEvento(b.item) - marcaTiempoEvento(a.item));
+    return mapa;
+  }, [casos]);
+
+  const primerDia = new Date(mesVisible.year, mesVisible.month - 1, 1);
+  const totalDias = new Date(mesVisible.year, mesVisible.month, 0).getDate();
+  const espaciosIniciales = (primerDia.getDay() + 6) % 7;
+  const celdas = Array.from({ length: espaciosIniciales + totalDias }, (_, indice) => {
+    if (indice < espaciosIniciales) return null;
+    const day = indice - espaciosIniciales + 1;
+    const clave = `${mesVisible.year}-${String(mesVisible.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return { day, clave };
+  });
+  while (celdas.length % 7) celdas.push(null);
+
+  const tituloMes = new Intl.DateTimeFormat('es-CO', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: ZONA_HORARIA_COLOMBIA,
+  }).format(new Date(Date.UTC(mesVisible.year, mesVisible.month - 1, 15, 12)));
+
+  function cambiarMes(delta) {
+    const fecha = new Date(mesVisible.year, mesVisible.month - 1 + delta, 1);
+    setMesVisible({ year: fecha.getFullYear(), month: fecha.getMonth() + 1 });
+    setDiaSeleccionado('');
+  }
+
+  function irMesActual() {
+    setMesVisible({ year: hoy.year, month: hoy.month });
+    setDiaSeleccionado(hoy.clave);
+  }
+
+  const creadasSeleccionadas = diaSeleccionado ? asesoriasPorDia.get(diaSeleccionado) || [] : [];
+  const actividadSeleccionada = diaSeleccionado ? actividadPorDia.get(diaSeleccionado) || [] : [];
+
+  return <section className="panel mt calendar-panel">
+    <div className="calendar-header">
+      <div>
+        <h2>Calendario mensual de asesorías</h2>
+        <p>Cada día muestra únicamente la cantidad de asesorías creadas. Selecciona una fecha para consultar su actividad.</p>
+      </div>
+      <div className="calendar-navigation">
+        <button type="button" className="calendar-nav-button" onClick={() => cambiarMes(-1)} aria-label="Mes anterior">‹</button>
+        <strong>{tituloMes}</strong>
+        <button type="button" className="calendar-nav-button" onClick={() => cambiarMes(1)} aria-label="Mes siguiente">›</button>
+        <button type="button" className="secondary fit calendar-today" onClick={irMesActual}>Hoy</button>
+      </div>
+    </div>
+
+    <div className="calendar-weekdays" aria-hidden="true">
+      {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(dia => <span key={dia}>{dia}</span>)}
+    </div>
+    <div className="calendar-grid">
+      {celdas.map((celda, indice) => {
+        if (!celda) return <div className="calendar-cell empty-day" key={`empty-${indice}`} />;
+        const cantidad = (asesoriasPorDia.get(celda.clave) || []).length;
+        const esHoy = celda.clave === hoy.clave;
+        const seleccionado = celda.clave === diaSeleccionado;
+        return <button
+          type="button"
+          key={celda.clave}
+          className={`calendar-cell${esHoy ? ' today' : ''}${seleccionado ? ' selected' : ''}`}
+          onClick={() => setDiaSeleccionado(celda.clave)}
+          aria-label={`${celda.day} de ${tituloMes}. ${cantidad} asesorías creadas.`}
+        >
+          <span className="calendar-day-number">{celda.day}</span>
+          {cantidad > 0 && <span className="calendar-created-count">{cantidad} creada{cantidad === 1 ? '' : 's'}</span>}
+        </button>;
+      })}
+    </div>
+
+    <div className="calendar-day-detail">
+      {!diaSeleccionado && <div className="empty">Selecciona un día del calendario para ver las asesorías creadas y el historial de actividad.</div>}
+      {diaSeleccionado && <>
+        <div className="calendar-detail-heading">
+          <div>
+            <h3>{fechaLargaDesdeClave(diaSeleccionado)}</h3>
+            <p>{creadasSeleccionadas.length} asesoría{creadasSeleccionadas.length === 1 ? '' : 's'} creada{creadasSeleccionadas.length === 1 ? '' : 's'} · {actividadSeleccionada.length} movimiento{actividadSeleccionada.length === 1 ? '' : 's'} registrado{actividadSeleccionada.length === 1 ? '' : 's'}</p>
+          </div>
+        </div>
+
+        <div className="calendar-detail-columns">
+          <section className="calendar-detail-section">
+            <h4>Asesorías creadas</h4>
+            {!creadasSeleccionadas.length && <p className="hint">No se crearon asesorías durante este día.</p>}
+            <div className="calendar-created-list">
+              {creadasSeleccionadas.map(caso => <button type="button" className="calendar-case-card" key={caso.id} onClick={() => onOpen(caso.id)}>
+                <strong>{caso.id} · {textoClienteCaso(caso)}</strong>
+                <span>{textoSolicitudesCaso(caso)} · {caso.asesor || 'Sin asesor'}</span>
+                <small>{caso.estado}</small>
+              </button>)}
+            </div>
+          </section>
+
+          <section className="calendar-detail-section">
+            <h4>Historial y actualizaciones del día</h4>
+            {!actividadSeleccionada.length && <p className="hint">No hay movimientos registrados en el historial para esta fecha.</p>}
+            <div className="calendar-activity-list">
+              {actividadSeleccionada.map(({ caso, item }) => <button type="button" className="calendar-activity-item" key={`${caso.id}-${item.id}`} onClick={() => onOpen(caso.id)}>
+                <div>
+                  <strong>{item.tipo || 'Actividad'} · {caso.id}</strong>
+                  <span>{textoClienteCaso(caso)} · {item.asesor || caso.asesor || 'Sistema'}</span>
+                </div>
+                <small>{fechaEventoLegible(item)}</small>
+                <p>{item.texto || 'Movimiento registrado en la asesoría.'}</p>
+              </button>)}
+            </div>
+          </section>
+        </div>
+      </>}
+    </div>
+  </section>;
 }
 
 function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = false }) {
@@ -1993,6 +2234,7 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
       <Field label="Cédula o NIT" value={facturacion.cedulaNit} onChange={v => actualizar('cedulaNit', v)} />
       <Field label="Teléfono" value={facturacion.telefono} onChange={v => actualizar('telefono', v)} />
       <Field label="Dirección" value={facturacion.direccion} onChange={v => actualizar('direccion', v)} />
+      <Field label="Ciudad" value={facturacion.ciudad} onChange={v => actualizar('ciudad', v)} />
       <Field label="Correo" type="email" value={facturacion.correo} onChange={v => actualizar('correo', v)} />
       <label>Tipo de trámite
         <select value={facturacion.tipoTramite} onChange={e => actualizar('tipoTramite', e.target.value)}>
@@ -2066,6 +2308,7 @@ function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, 
     {facturacion && <div className="info-box muted">
       <strong>Facturación</strong>
       <Line label="Nombre" value={facturacionNormalizada.nombre || 'Pendiente'} />
+      <Line label="Ciudad" value={facturacionNormalizada.ciudad || 'Pendiente'} />
       <Line label="Tipo de trámite" value={textoSolicitud(facturacionNormalizada.tipoTramite)} />
       <Line label="Medio de pago" value={facturacionNormalizada.medioPago || 'Pendiente'} />
       <Line label="Valor" value={facturacionNormalizada.valor ? moneda(facturacionNormalizada.valor) : 'No aplica'} />

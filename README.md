@@ -1,53 +1,70 @@
-# SIGV Web · Fase 5B.1 · Diseño de dos columnas
+# SIGV Web · Fase 5C · Calendario mensual y ciudad
 
-Esta versión corrige la distribución visual de **2.8 / Fase 5B** y continúa sobre la seguridad reconstruida de la Fase 5A. Conserva la colección técnica `casos`, los consecutivos desde `A0001`, los datos existentes, el Resumen del Proceso detallado y la opción de pago Wompi.
+Esta versión continúa sobre **2.8.1 / Fase 5B.1**, conserva el diseño definitivo de dos columnas y mantiene sin cambios la seguridad reconstruida de la Fase 5A.
 
 ## Versión
 
-- Aplicación: `5.1.1`
-- Identificación visible: `Fase 5B.1 Web · Diseño de dos columnas`
-- Build: `2026-07-21-05B1`
+- Aplicación: `5.2.0`
+- Identificación visible: `Fase 5C Web · Calendario mensual y ciudad`
+- Build: `2026-07-21-05C`
 
 ## Cambios funcionales
 
-### Diseño definitivo de dos columnas
+### Calendario mensual en Dashboard
 
-En **Nueva asesoría** y en el **Detalle de asesoría**, la pantalla de computador se organiza únicamente en:
+El Dashboard incorpora un calendario navegable por mes. Cada día muestra únicamente la cantidad de asesorías creadas, por ejemplo `1 creada` o `3 creadas`.
 
-1. **Proceso completo:** asesor responsable, cantidad, datos de integrantes, tipos de solicitud, documentos, programación de asesoría, facturación, cita de embajada, observaciones, estado, seguimiento e historial.
-2. **Resumen del Proceso:** resumen visible y actualizado mientras se diligencia o edita la asesoría.
+Al seleccionar una fecha aparece un detalle dividido en:
 
-Se eliminó por completo la división anterior del proceso en dos columnas. El Resumen del Proceso permanece fijo al desplazarse en pantallas amplias. En pantallas menores de 980 px, ambas columnas se muestran una debajo de la otra para conservar legibilidad.
+1. **Asesorías creadas:** identificación, cliente o grupo, tipo de solicitud, asesor y estado. Cada tarjeta abre el expediente completo.
+2. **Historial y actualizaciones del día:** creación, seguimientos y actualizaciones registradas en el historial de las asesorías, con fecha y hora, usuario responsable y descripción.
 
-### Navegación plegable
+Los eventos nuevos guardan `fecha`, `fechaIso` y `fechaMs`. Esto mejora la ubicación cronológica sin romper los historiales anteriores, que continúan interpretándose desde su campo `fecha`.
 
-El botón **☰ Menú** mantiene el panel lateral superpuesto. La navegación no ocupa una tercera columna y puede cerrarse con el botón ×, haciendo clic fuera del menú o presionando Escape.
+Las asesorías antiguas se ubican usando `createdAtIso`, `createdAtMs` o, como respaldo, el evento de Creación del historial. Si un registro muy antiguo no tiene ninguna fecha disponible, seguirá funcionando, pero no podrá aparecer retroactivamente en el calendario.
 
-### Resumen del Proceso
+### Resumen del Proceso más compacto
 
-El resumen conserva el detalle por integrante:
+Se conserva exactamente el ancho de la segunda columna. Solo se redujeron de forma moderada:
 
-- Nombre.
-- Tipo de solicitud.
-- Valor individual.
-- Tarifa base y porcentaje de descuento cuando aplica.
+- Tamaño de la tipografía.
+- Espacios internos.
+- Separación entre integrantes.
+- Altura de líneas, tarjetas, totales y cajas informativas.
 
-También muestra cantidad de integrantes, subtotal, descuento grupal, total a facturar, valores informativos, estado, documentos, programación, facturación y fecha de cita de embajada.
+La primera columna continúa mostrando todo el proceso y la segunda permanece dedicada al Resumen del Proceso.
 
-### Medio de pago Wompi
+### Ciudad en Facturación
 
-Se conserva **Wompi** en el selector de medio de pago. Los registros anteriores mantienen compatibilidad.
+Se agregó el campo **Ciudad** dentro de Facturación. El dato se guarda como:
+
+```text
+facturacion.ciudad
+```
+
+También aparece al copiar los datos de facturación y en el Resumen del Proceso.
+
+Firestore no requiere migración ni creación previa de columnas. Las asesorías nuevas o editadas guardarán el campo automáticamente. Las asesorías antiguas que no tengan `facturacion.ciudad` abrirán normalmente con el campo vacío.
+
+### Funciones conservadas
+
+- Diseño de dos columnas.
+- Menú lateral plegable.
+- Resumen individual por integrante.
+- Descuentos por cantidad.
+- Medio de pago Wompi.
+- Consecutivos desde A0001.
+- Colección técnica `casos`.
+- Compatibilidad con registros anteriores.
 
 ## Seguridad conservada
 
-Las reglas de Firestore y la autorización por roles permanecen sin cambios respecto a la versión 2.8:
+No se modificaron `firestore.rules`, `src/firebase.js` ni `src/firestoreRest.js` respecto a la versión 2.8.1.
 
 - Administrador activo: gestión total, configuración, usuarios y eliminación de asesorías.
-- Asesor activo: lectura, creación y actualización operativa, sin configuración ni eliminación.
+- Asesor activo: lectura, creación y actualización operativa.
 - Usuarios sin perfil, inactivos o con rol inválido: acceso bloqueado.
-- Inicialización controlada del primer Administrador y protección del Administrador principal.
-
-Lee `MIGRACION_FASE_5.md` antes de publicar las reglas estrictas en una instalación que todavía no haya completado la migración de seguridad.
+- Inicialización controlada del primer Administrador.
 
 ## Instalación y validación
 

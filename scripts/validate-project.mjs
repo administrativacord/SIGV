@@ -24,6 +24,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+if (pkg.version !== '5.2.0') errors.push(`La versión esperada es 5.2.0 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -43,20 +44,35 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5B.1 Web · Diseño de dos columnas",
+  "Fase 5C Web · Calendario mensual y ciudad",
   'className="process-layout"',
   'className="panel summary process-summary"',
-  ">Resumen del Proceso<",
+  '>Resumen del Proceso<',
   '<option value="Wompi">Wompi</option>',
   'sidebar-drawer',
   'menu-button',
+  'function CalendarioAsesorias',
+  'Calendario mensual de asesorías',
+  'calendar-created-count',
+  'Historial y actualizaciones del día',
+  'Field label="Ciudad"',
+  'facturacion.ciudad ||',
+  'fechaIso: ahora.toISOString()',
 ]) {
-  if (!main.includes(expected)) errors.push(`La Fase 5B.1 no contiene: ${expected}`);
+  if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
 }
 
 const styles = readFileSync(resolve(root, 'src/styles.css'), 'utf8');
-for (const expected of ['grid-template-columns: minmax(0, 1.72fr) minmax(320px, .78fr)', '@media (max-width: 980px)', '.process-summary', '.sidebar-drawer.open']) {
-  if (!styles.includes(expected)) errors.push(`Los estilos de Fase 5B.1 no contienen: ${expected}`);
+for (const expected of [
+  'grid-template-columns: minmax(0, 1.72fr) minmax(320px, .78fr)',
+  '@media (max-width: 980px)',
+  '.process-summary',
+  '.sidebar-drawer.open',
+  '.calendar-grid',
+  '.calendar-created-count',
+  '.process-summary { font-size: 13px; padding: 17px; }',
+]) {
+  if (!styles.includes(expected)) errors.push(`Los estilos de Fase 5C no contienen: ${expected}`);
 }
 
 const processLayoutCount = (main.match(/className="process-layout"/g) || []).length;
@@ -71,4 +87,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5B.1 aprobada.');
+console.log('Validación SIGV Fase 5C aprobada.');
