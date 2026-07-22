@@ -193,3 +193,10 @@ button.danger.fit { width: fit-content; }
 @media (max-width: 760px) {
   .role-grid { grid-template-columns: 1fr; }
 }
+
+.security-card { width: min(560px, 100%); }
+.security-card .alert-box { margin: 18px 0; text-align: left; }
+.security-email { display: block; padding: 12px 14px; margin: 14px 0; border-radius: 12px; background: #f1f5f9; color: #0f172a; word-break: break-word; }
+.security-panel { border: 1px solid #bfdbfe; background: #f8fbff; }
+.security-panel p { color: #475569; line-height: 1.5; }
+.login-card .secondary { width: 100%; color: #0f172a; }

@@ -1,39 +1,21 @@
-# SIGV Web · Fase 4A.4 · Asesorías
+# SIGV Web · Fase 5A.1 · Seguridad reconstruida
 
-Base tomada de la Fase 3.4 estable con Firebase Authentication, Firestore por REST, diagnóstico de conexión, creación y carga de asesorías desde la nube.
+Esta versión fue reconstruida tomando como base directa el ZIP que estaba funcionando en producción: **Fase 4A.4 Web.zip**. Conserva las pantallas, cálculos, consecutivos, asesorías existentes y la colección técnica `casos`, pero reemplaza la seguridad dependiente del frontend por autorización real en Firestore.
 
-## Cambios principales de la Fase 4A
+## Versión
 
-### 1. Roles operativos
-Se agregaron dos roles iniciales para el sistema:
+- Aplicación: `5.0.1-a`
+- Identificación visible: `Fase 5A.1 Web · Seguridad reconstruida`
+- Build: `2026-07-21-05A1`
 
-- **Administrador**: puede ver todo, crear asesorías, editar asesorías, consultar asesorías, eliminar asesorías con confirmación, editar configuración general, modificar tarifas, valores informativos y agregar asesoras.
-- **Asesor**: puede crear asesorías, editar asesorías y cambiar estados del proceso. No puede entrar a Configuración ni modificar tarifas o valores generales.
+## Cambios principales
 
-El rol se muestra en la barra superior después de iniciar sesión.
+### Seguridad real por roles
 
-### 2. Colección `usuariosSigv`
-La aplicación ahora busca el perfil del usuario autenticado en Firestore usando la colección:
-
-```txt
-usuariosSigv
-```
-
-El ID del documento debe ser el correo del usuario en minúscula. Ejemplo:
+Las reglas de Firestore validan el documento del usuario autenticado en:
 
 ```txt
-usuariosSigv/milena@empresa.com
-```
-
-Estructura sugerida del documento:
-
-```json
-{
-  "nombre": "Milena",
-  "email": "milena@empresa.com",
-  "rol": "asesor",
-  "activo": true
-}
+usuariosSigv/{correo-en-minúscula}
 ```
 
 Roles válidos:
@@ -43,32 +25,77 @@ administrador
 asesor
 ```
 
-### 3. Administrador provisional
-Para evitar que el sistema quede bloqueado al iniciar la Fase 4A, si un usuario autenticado no tiene todavía documento en `usuariosSigv`, la app lo habilita como **Administrador provisional**. Desde Configuración se recomienda guardar ese mismo correo como Administrador para dejarlo registrado formalmente.
+Todos los usuarios deben tener `activo: true` para utilizar la aplicación.
 
-### 4. Gestión de usuarios y roles
-En **Configuración** se agregó el bloque **Usuarios y roles**. Desde allí el Administrador puede registrar usuarios ya creados en Firebase Authentication y asignarles rol operativo dentro de SIGV.
+### Permisos
 
-Importante: esta pantalla no crea cuentas de Firebase Authentication. Primero se debe crear el usuario con email y contraseña en Firebase Authentication y luego registrarlo en SIGV desde esta sección.
+**Administrador activo**
 
-### 5. Restricción visual por rol
-El rol Asesor ya no ve la opción **Configuración** en el menú lateral. Tampoco puede acceder a esa vista por navegación interna. La edición de tarifas, costos informativos y asesoras queda reservada al Administrador.
+- Lee, crea y actualiza asesorías.
+- Elimina asesorías con la confirmación existente.
+- Modifica configuración y tarifas.
+- Consulta y administra usuarios y roles.
+- Ejecuta diagnósticos de Firestore.
 
-### 6. Eliminación controlada de asesorías
-Se agregó la opción **Eliminar asesoría** únicamente para Administrador dentro del detalle de la asesoría. La eliminación solicita dos confirmaciones:
+**Asesor activo**
 
-1. Confirmación general del navegador.
-2. Escritura exacta de la palabra `ELIMINAR`.
+- Lee, crea y actualiza asesorías.
+- Cambia estados y agrega seguimientos.
+- No elimina asesorías.
+- No modifica configuración, tarifas ni usuarios.
 
-Esto reduce el riesgo de borrar asesorías por error.
+**Usuario sin perfil, inactivo o con rol inválido**
 
-### 7. Reglas de Firestore
-El archivo `firestore.rules` fue actualizado para incluir la colección `usuariosSigv` y permitir eliminación de asesorías a usuarios autenticados. En esta Fase 4A el control fino de permisos se aplica principalmente desde la interfaz. En una fase posterior puede reforzarse con reglas estrictas basadas en roles.
+- No recibe permisos temporales.
+- No puede cargar asesorías ni configuración.
+- Ve una pantalla de acceso bloqueado con una explicación clara.
 
-## Instalación
+### Primer Administrador controlado
+
+La aplicación utiliza el documento:
+
+```txt
+configuracion/seguridad
+```
+
+Campos principales:
+
+```json
+{
+  "primerAdministradorConfigurado": true,
+  "primerAdministradorEmail": "correo@empresa.com",
+  "inicializacionCerrada": true,
+  "versionSeguridad": "5A.1"
+}
+```
+
+Si ya existe un perfil Administrador activo, SIGV crea automáticamente este documento al iniciar sesión. Si la instalación no tiene perfil ni configuración de seguridad, aparece una pantalla para registrar de forma atómica al primer Administrador y cerrar la inicialización.
+
+Después del cierre, un usuario creado solamente en Firebase Authentication no podrá ingresar hasta que un Administrador lo registre en `usuariosSigv`.
+
+### Protección del Administrador principal
+
+El correo registrado en `primerAdministradorEmail` no puede quedar inactivo ni cambiarse a Asesor. El documento de seguridad tampoco puede eliminarse ni cambiar de propietario desde la aplicación.
+
+### Carga segura
+
+Se eliminó el comportamiento que convertía un error de conexión o la ausencia de perfil en acceso de Administrador. Si Firestore no puede validar el perfil, la aplicación bloquea los permisos y permite reintentar.
+
+### Dependencias fijas
+
+Se eliminó `latest`. Las versiones quedan fijadas en `package.json` y se agregó `npm run check` para revisar estructura, archivos prohibidos y controles mínimos de seguridad.
+
+### Paginación REST
+
+La lectura de colecciones por Firestore REST ahora recorre todas las páginas disponibles, evitando limitar silenciosamente la lista a la primera página.
+
+## Instalación local
+
+Requiere Node.js 20.19 o superior.
 
 ```bash
-npm install
+npm install --package-lock=false
+npm run check
 npm run dev
 ```
 
@@ -78,39 +105,20 @@ npm run dev
 npm run build
 ```
 
-## Archivos excluidos del ZIP
+## Publicación
 
-Este paquete no debe incluir:
+Lee primero `MIGRACION_FASE_5.md`. El orden de publicación es importante para comprobar el Administrador antes de activar las reglas estrictas.
+
+Para publicar solamente las reglas:
+
+```bash
+firebase deploy --only firestore:rules
+```
+
+## Archivos excluidos
+
+El ZIP no incluye:
 
 - `node_modules/`
 - `dist/`
 - `package-lock.json`
-
-
-## Fase 4A.2 - ajustes aplicados
-
-- El resumen automático en el detalle de Asesorías queda al final del formulario, compacto, como en Nueva asesoría.
-- Las nuevas asesorías usan el consecutivo SIGV: A0001 hasta A9999; luego B0001 hasta B9999, y así sucesivamente con C, D, etc.
-- Se mantiene compatibilidad con IDs anteriores tipo CAS-2026-0001 para calcular el siguiente consecutivo.
-- Se agregó protección anti-bloqueo: si no existe ningún Administrador activo en `usuariosSigv`, el usuario autenticado entra como Administrador provisional para corregir roles.
-- Se agregó botón **Reiniciar roles**: deja el usuario actual como Administrador activo y los demás usuarios como Asesor activo.
-- La interfaz impide guardar cambios que dejen el sistema sin al menos un Administrador activo.
-
-
-## Corrección Fase 4A.2
-
-- Se ajustó el consecutivo de asesorías para que el primera asesoría sea `A0001` y todos los IDs mantengan 4 dígitos después de la letra: `A0001` a `A9999`, luego `B0001` a `B9999`, y así sucesivamente.
-
-
-## Corrección Fase 4A.3
-
-- En la pantalla **Asesorías / Detalle**, las secciones **Nuevo seguimiento** e **Historial cronológico** fueron movidas al final del formulario.
-- Ambas secciones quedaron recogidas/cerradas por defecto para no cargar visualmente la pantalla.
-- Al presionar **Ver**, se despliega el contenido; al presionar **Ocultar**, vuelve a cerrarse.
-- Se mantiene sin cambios la lógica de roles, permisos y consecutivo de asesorías `A0001` a `A9999`, `B0001` a `B9999`, etc.
-
-## Corrección Fase 4A.4
-
-- Se ajustó el lenguaje visible de la interfaz para que el módulo pase de **Casos** a **Asesorías**.
-- El botón y la pantalla **Nuevo caso** ahora se muestran como **Nueva asesoría**.
-- Se mantuvo internamente la colección Firestore `casos` para no romper compatibilidad con datos existentes, IDs y respaldos.

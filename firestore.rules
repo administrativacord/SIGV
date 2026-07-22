@@ -3,32 +3,137 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null && request.auth.token.email is string;
     }
 
-    // Fase 4A.1: el control fino de roles se aplica en la interfaz de SIGV.
-    // Estas reglas mantienen compatibilidad para usuarios autenticados mientras
-    // se consolida la administración de roles desde la colección usuariosSigv. La interfaz impide dejar el sistema sin Administrador activo.
+    function authEmail() {
+      return request.auth.token.email;
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/usuariosSigv/$(authEmail());
+    }
+
+    function securityPath() {
+      return /databases/$(database)/documents/configuracion/seguridad;
+    }
+
+    function validRole(role) {
+      return role == 'administrador' || role == 'asesor';
+    }
+
+    function userExists() {
+      return signedIn() && exists(userPath());
+    }
+
+    function activeUser() {
+      return userExists()
+        && get(userPath()).data.activo == true
+        && validRole(get(userPath()).data.rol);
+    }
+
+    function activeAdmin() {
+      return activeUser() && get(userPath()).data.rol == 'administrador';
+    }
+
+    function securityConfigured() {
+      return exists(securityPath())
+        && ('primerAdministradorConfigurado' in get(securityPath()).data)
+        && get(securityPath()).data.primerAdministradorConfigurado == true;
+    }
+
+    function bootstrapOpen() {
+      return !exists(securityPath())
+        || !('primerAdministradorConfigurado' in get(securityPath()).data)
+        || get(securityPath()).data.primerAdministradorConfigurado != true;
+    }
+
+    function validUserDocument(emailId) {
+      return request.resource.data.email == emailId
+        && validRole(request.resource.data.rol)
+        && request.resource.data.activo is bool;
+    }
+
+    function bootstrapUser(emailId) {
+      return signedIn()
+        && bootstrapOpen()
+        && emailId == authEmail()
+        && validUserDocument(emailId)
+        && request.resource.data.rol == 'administrador'
+        && request.resource.data.activo == true
+        && existsAfter(securityPath())
+        && getAfter(securityPath()).data.primerAdministradorConfigurado == true
+        && getAfter(securityPath()).data.primerAdministradorEmail == authEmail();
+    }
+
+    function bootstrapSecurity() {
+      return signedIn()
+        && bootstrapOpen()
+        && request.resource.data.primerAdministradorConfigurado == true
+        && request.resource.data.primerAdministradorEmail == authEmail()
+        && existsAfter(userPath())
+        && getAfter(userPath()).data.rol == 'administrador'
+        && getAfter(userPath()).data.activo == true;
+    }
+
+    function validSecurityDocument() {
+      return request.resource.data.primerAdministradorConfigurado == true
+        && request.resource.data.primerAdministradorEmail is string
+        && request.resource.data.inicializacionCerrada == true;
+    }
+
+    function preservesSecurityOwner() {
+      return resource.data.primerAdministradorConfigurado == true
+        && request.resource.data.primerAdministradorConfigurado == true
+        && request.resource.data.primerAdministradorEmail == resource.data.primerAdministradorEmail
+        && request.resource.data.inicializacionCerrada == true;
+    }
+
+    function primaryAdminProtected(emailId) {
+      return !securityConfigured()
+        || get(securityPath()).data.primerAdministradorEmail != emailId
+        || (request.resource.data.rol == 'administrador' && request.resource.data.activo == true);
+    }
+
     match /casos/{casoId} {
-      allow read, create, update: if signedIn();
-      allow delete: if signedIn();
+      allow read, create, update: if activeUser();
+      allow delete: if activeAdmin();
+    }
+
+    match /configuracion/seguridad {
+      allow read: if signedIn();
+      allow create: if (activeAdmin() && validSecurityDocument() && request.resource.data.primerAdministradorEmail == authEmail()) || bootstrapSecurity();
+      allow update: if activeAdmin() && validSecurityDocument() && preservesSecurityOwner();
+      allow delete: if false;
     }
 
     match /configuracion/{documentoId} {
-      allow read, write: if signedIn();
+      allow read: if documentoId != 'seguridad' && activeUser();
+      allow create, update: if documentoId != 'seguridad' && activeAdmin();
+      allow delete: if false;
     }
 
-    match /usuariosSigv/{email} {
-      allow read, write: if signedIn();
+    match /usuariosSigv/{emailId} {
+      allow get: if signedIn() && (emailId == authEmail() || activeAdmin());
+      allow list: if activeAdmin();
+      allow create: if (activeAdmin() && validUserDocument(emailId)) || bootstrapUser(emailId);
+      allow update: if (activeAdmin() && validUserDocument(emailId) && primaryAdminProtected(emailId)) || bootstrapUser(emailId);
+      allow delete: if false;
     }
 
     match /usuarios/{userId} {
-      allow read: if signedIn();
-      allow write: if signedIn() && request.auth.uid == userId;
+      allow read: if activeUser();
+      allow create, update: if activeUser() && request.auth.uid == userId;
+      allow delete: if false;
     }
 
     match /diagnosticoSigv/{documentoId} {
-      allow read, write: if signedIn();
+      allow read, create, update: if activeUser();
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

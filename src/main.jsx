@@ -13,17 +13,19 @@ import {
   listarColeccionRest,
   obtenerDocumentoRest,
   eliminarDocumentoRest,
+  inicializarPrimerAdministradorRest,
+  activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 4A.4 Web · Asesorías';
-const BUILD_ID = '2026-07-05-04A4';
+const APP_VERSION = 'Fase 5A.1 Web · Seguridad reconstruida';
+const BUILD_ID = '2026-07-21-05A1';
 
 
 const rolesSigv = {
   administrador: {
     id: 'administrador',
     label: 'Administrador',
-    descripcion: 'Puede ver todo, crear, editar, consultar, eliminar con precaución, editar configuración y agregar asesoras.',
+    descripcion: 'Puede ver todo, crear, editar, consultar, eliminar con precaución, editar configuración y administrar usuarios.',
   },
   asesor: {
     id: 'asesor',
@@ -38,47 +40,63 @@ function claveUsuarioSigv(email = '') {
 
 function normalizarRolSigv(rol = '') {
   const limpio = normalizar(String(rol || ''));
-  if (limpio.includes('admin')) return 'administrador';
-  return 'asesor';
+  if (limpio === 'administrador' || limpio === 'admin') return 'administrador';
+  if (limpio === 'asesor' || limpio === 'asesora') return 'asesor';
+  return '';
 }
 
 function normalizarUsuarioSigv(data = {}, fallbackEmail = '') {
   const email = claveUsuarioSigv(data.email || fallbackEmail || data.id || '');
-  const rol = normalizarRolSigv(data.rol || data.role || 'asesor');
+  const rol = normalizarRolSigv(data.rol || data.role || '');
   return {
+    ...data,
     id: data.id || email,
     email,
     nombre: String(data.nombre || data.name || email || 'Usuario SIGV').trim(),
     rol,
-    activo: data.activo !== false,
-    provisional: !!data.provisional,
+    activo: data.activo === true,
+    provisional: false,
     creadoEnFase4A: data.creadoEnFase4A !== false,
-    updatedAtMs: data.updatedAtMs || 0,
+    updatedAtMs: Number(data.updatedAtMs) || 0,
   };
 }
 
-function perfilAdministradorProvisional(user) {
+function perfilSinAcceso(user, motivo = 'sinPerfil') {
+  const email = claveUsuarioSigv(user?.email || '');
+  return {
+    id: email,
+    email,
+    nombre: user?.displayName || email || 'Usuario SIGV',
+    rol: '',
+    activo: false,
+    motivoBloqueo: motivo,
+  };
+}
+
+function perfilAdministradorAutenticado(user) {
   const email = claveUsuarioSigv(user?.email || '');
   return normalizarUsuarioSigv({
     id: email,
     email,
-    nombre: user?.displayName || email || 'Administrador inicial',
+    nombre: user?.displayName || email || 'Administrador SIGV',
     rol: 'administrador',
     activo: true,
-    provisional: true,
+    creadoEnFase5A: true,
   }, email);
 }
 
-function perfilAdministradorRescate(user) {
+function normalizarSeguridad(data = {}) {
   return {
-    ...perfilAdministradorProvisional(user),
-    rescateAdministrador: true,
-    motivoRescate: 'No hay ningún Administrador activo en usuariosSigv.',
+    primerAdministradorConfigurado: data?.primerAdministradorConfigurado === true,
+    primerAdministradorEmail: claveUsuarioSigv(data?.primerAdministradorEmail || ''),
+    inicializacionCerrada: data?.inicializacionCerrada === true,
+    versionSeguridad: String(data?.versionSeguridad || ''),
+    updatedAtIso: String(data?.updatedAtIso || ''),
   };
 }
 
 function esAdministradorActivo(usuario = {}) {
-  return usuario?.activo !== false && normalizarRolSigv(usuario?.rol) === 'administrador';
+  return usuario?.activo === true && normalizarRolSigv(usuario?.rol) === 'administrador';
 }
 
 function hayAdministradorActivo(usuarios = []) {
@@ -86,7 +104,7 @@ function hayAdministradorActivo(usuarios = []) {
 }
 
 function hayAdministradorActivoGuardado(usuarios = []) {
-  return usuarios.some(usuario => esAdministradorActivo(usuario) && !usuario.provisional);
+  return usuarios.some(esAdministradorActivo);
 }
 
 function ordenarUsuariosSigv(usuarios = []) {
@@ -94,27 +112,12 @@ function ordenarUsuariosSigv(usuarios = []) {
 }
 
 function permisosDesdePerfil(perfil) {
-  if (!perfil) {
-    return {
-      activo: false,
-      rol: '',
-      esAdministrador: false,
-      esAsesor: false,
-      puedeVerTodo: false,
-      puedeCrearCasos: false,
-      puedeEditarCasos: false,
-      puedeCambiarEstado: false,
-      puedeEliminarCasos: false,
-      puedeEditarConfiguracion: false,
-      puedeAgregarAsesoras: false,
-    };
-  }
   const rol = normalizarRolSigv(perfil?.rol);
-  const activo = perfil?.activo !== false;
+  const activo = perfil?.activo === true;
   const esAdministrador = activo && rol === 'administrador';
   const esAsesor = activo && rol === 'asesor';
   return {
-    activo,
+    activo: esAdministrador || esAsesor,
     rol,
     esAdministrador,
     esAsesor,
@@ -727,16 +730,21 @@ function App() {
   const [diagnostico, setDiagnostico] = useState('');
   const [perfil, setPerfil] = useState(null);
   const [usuariosSigv, setUsuariosSigv] = useState([]);
+  const [seguridad, setSeguridad] = useState(() => normalizarSeguridad());
+  const [requiereInicializacion, setRequiereInicializacion] = useState(false);
+  const [inicializandoSeguridad, setInicializandoSeguridad] = useState(false);
 
   useEffect(() => {
     const cancelar = onAuthStateChanged(auth, user => {
       setUsuarioAuth(user);
       setLogueado(!!user);
-      setCargando(false);
+      setCargando(!!user);
       if (!user) {
         setCasos([]);
         setUsuariosSigv([]);
         setPerfil(null);
+        setSeguridad(normalizarSeguridad());
+        setRequiereInicializacion(false);
         setConfigState(normalizarConfiguracion(configuracionBase));
       }
     });
@@ -751,61 +759,90 @@ function App() {
       setCargando(true);
       setErrorConexion('');
       setDiagnostico('');
+      setRequiereInicializacion(false);
+      setUsuariosSigv([]);
       try {
         const emailPerfil = claveUsuarioSigv(usuarioAuth.email);
-        const [configRemota, casosRemotos, perfilRemoto, usuariosRemotos] = await Promise.all([
-          conTiempoLimite(obtenerDocumentoRest('configuracion', 'general'), 18000, 'No respondió la configuración de Firestore.'),
-          conTiempoLimite(listarColeccionRest('casos'), 18000, 'No respondió la colección de asesorías de Firestore.'),
-          conTiempoLimite(obtenerDocumentoRest('usuariosSigv', emailPerfil), 18000, 'No respondió el perfil de usuario SIGV.').catch(() => null),
-          conTiempoLimite(listarColeccionRest('usuariosSigv'), 18000, 'No respondió la colección de usuarios SIGV.').catch(() => []),
+        const [seguridadRemota, perfilRemoto] = await Promise.all([
+          conTiempoLimite(obtenerDocumentoRest('configuracion', 'seguridad'), 18000, 'No respondió la configuración de seguridad de Firestore.'),
+          conTiempoLimite(obtenerDocumentoRest('usuariosSigv', emailPerfil), 18000, 'No respondió el perfil de usuario SIGV.'),
         ]);
 
         if (!activo) return;
 
-        const usuariosLista = ordenarUsuariosSigv(usuariosRemotos.map(item => normalizarUsuarioSigv(item, item.email || item.id)));
-        const noHayAdministrador = !hayAdministradorActivo(usuariosLista);
-        const perfilActual = noHayAdministrador
-          ? perfilAdministradorRescate(usuarioAuth)
-          : (perfilRemoto ? normalizarUsuarioSigv(perfilRemoto, emailPerfil) : perfilAdministradorProvisional(usuarioAuth));
+        let seguridadActual = normalizarSeguridad(seguridadRemota || {});
+        setSeguridad(seguridadActual);
+
+        if (!perfilRemoto) {
+          setPerfil(null);
+          setCasos([]);
+          setConfigState(normalizarConfiguracion(configuracionBase));
+          if (!seguridadActual.primerAdministradorConfigurado) {
+            setRequiereInicializacion(true);
+          } else {
+            setPerfil(perfilSinAcceso(usuarioAuth, 'sinPerfil'));
+          }
+          return;
+        }
+
+        const perfilActual = normalizarUsuarioSigv(perfilRemoto, emailPerfil);
         setPerfil(perfilActual);
 
-        const usuariosSinPerfilDuplicado = usuariosLista.filter(u => claveUsuarioSigv(u.email) !== claveUsuarioSigv(perfilActual.email));
-        setUsuariosSigv(ordenarUsuariosSigv([perfilActual, ...usuariosSinPerfilDuplicado]));
+        if (!perfilActual.activo || !normalizarRolSigv(perfilActual.rol)) {
+          setCasos([]);
+          setConfigState(normalizarConfiguracion(configuracionBase));
+          return;
+        }
+
+        if (perfilActual.rol === 'administrador' && !seguridadActual.primerAdministradorConfigurado) {
+          try {
+            const seguridadCreada = await conTiempoLimite(
+              activarSeguridadAdministradorRest(emailPerfil),
+              20000,
+              'No respondió la activación de seguridad en Firestore.'
+            );
+            seguridadActual = normalizarSeguridad(seguridadCreada || {});
+            setSeguridad(seguridadActual);
+          } catch (errorSeguridad) {
+            console.error('No se pudo cerrar automáticamente la inicialización de seguridad:', errorSeguridad);
+            setErrorConexion(`Tu perfil de Administrador fue validado, pero falta activar el cierre de seguridad. Detalle: ${errorSeguridad.message || 'error desconocido'}.`);
+          }
+        }
+
+        const esAdmin = perfilActual.rol === 'administrador';
+        const [configRemota, casosRemotos, usuariosRemotos] = await Promise.all([
+          conTiempoLimite(obtenerDocumentoRest('configuracion', 'general'), 18000, 'No respondió la configuración de Firestore.'),
+          conTiempoLimite(listarColeccionRest('casos'), 18000, 'No respondió la colección de asesorías de Firestore.'),
+          esAdmin
+            ? conTiempoLimite(listarColeccionRest('usuariosSigv'), 18000, 'No respondió la colección de usuarios SIGV.')
+            : Promise.resolve([]),
+        ]);
+
+        if (!activo) return;
 
         const configLimpia = normalizarConfiguracion(configRemota || configuracionBase);
         setConfigState(configLimpia);
-        localStorage.setItem('sigv_configuracion_fase4_backup', JSON.stringify(configLimpia));
+        localStorage.setItem('sigv_configuracion_fase5_backup', JSON.stringify(configLimpia));
 
         const lista = casosRemotos
           .map(item => prepararCasoGuardado(item, configLimpia))
           .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
         setCasos(lista);
-        localStorage.setItem('sigv_casos_fase4_backup', JSON.stringify(lista));
+        localStorage.setItem('sigv_casos_fase5_backup', JSON.stringify(lista));
+
+        if (esAdmin) {
+          setUsuariosSigv(ordenarUsuariosSigv(
+            usuariosRemotos.map(item => normalizarUsuarioSigv(item, item.email || item.id))
+          ));
+        }
       } catch (error) {
         if (!activo) return;
         console.error('Error cargando Firestore por REST:', error);
-
-        const respaldoConfig = localStorage.getItem('sigv_configuracion_fase4_backup') || localStorage.getItem('sigv_configuracion_fase3_backup');
-        const respaldoCasos = localStorage.getItem('sigv_casos_fase4_backup') || localStorage.getItem('sigv_casos_fase3_backup');
-        setPerfil(perfilAdministradorProvisional(usuarioAuth));
-
-        if (respaldoConfig) {
-          try {
-            setConfigState(normalizarConfiguracion(JSON.parse(respaldoConfig)));
-          } catch (parseError) {
-            console.error('Error leyendo respaldo de configuración:', parseError);
-          }
-        }
-
-        if (respaldoCasos) {
-          try {
-            setCasos(JSON.parse(respaldoCasos).map(c => prepararCasoGuardado(c, config)));
-          } catch (parseError) {
-            console.error('Error leyendo respaldo de asesorías:', parseError);
-          }
-        }
-
-        setErrorConexion(`No se pudo cargar Firestore. Detalle: ${error.message || error.code || 'error desconocido'}. Verifica que Cloud Firestore esté creado en modo nativo, que las reglas estén publicadas y que la red permita firestore.googleapis.com.`);
+        setPerfil(null);
+        setCasos([]);
+        setUsuariosSigv([]);
+        setConfigState(normalizarConfiguracion(configuracionBase));
+        setErrorConexion(`No se pudo validar de forma segura el perfil y la información en Firestore. No se concedieron permisos provisionales. Detalle: ${error.message || error.code || 'error desconocido'}.`);
       } finally {
         if (activo) setCargando(false);
       }
@@ -854,6 +891,62 @@ function App() {
     await signOut(auth);
     setVista('dashboard');
     setCasoAbiertoId(null);
+  }
+
+  async function inicializarSeguridadInicial() {
+    const email = claveUsuarioSigv(usuarioAuth?.email);
+    if (!email) {
+      alert('No se pudo identificar el correo autenticado.');
+      return;
+    }
+    const confirma = window.confirm(`Este correo quedará registrado como primer Administrador de SIGV:\n\n${email}\n\nDespués de confirmar, los usuarios sin perfil ya no podrán ingresar.`);
+    if (!confirma) return;
+
+    try {
+      setInicializandoSeguridad(true);
+      const resultado = await conTiempoLimite(
+        inicializarPrimerAdministradorRest({
+          email,
+          nombre: usuarioAuth?.displayName || email,
+        }),
+        25000,
+        'Firestore no respondió al configurar el primer Administrador.'
+      );
+      setPerfil(normalizarUsuarioSigv(resultado.usuario, email));
+      setSeguridad(normalizarSeguridad(resultado.seguridad));
+      setRequiereInicializacion(false);
+      window.location.reload();
+    } catch (error) {
+      console.error('Error inicializando seguridad SIGV:', error);
+      alert(`No se pudo configurar el primer Administrador. Es posible que otro usuario ya haya completado la inicialización. Detalle: ${error.message || 'error desconocido'}.`);
+    } finally {
+      setInicializandoSeguridad(false);
+    }
+  }
+
+  async function activarSeguridadManual() {
+    if (!permisos.esAdministrador) {
+      alert('Solo un Administrador activo puede activar la seguridad.');
+      return false;
+    }
+    try {
+      setGuardando(true);
+      const seguridadCreada = await conTiempoLimite(
+        activarSeguridadAdministradorRest(usuarioAuth?.email),
+        20000,
+        'Firestore no respondió al activar la seguridad.'
+      );
+      setSeguridad(normalizarSeguridad(seguridadCreada));
+      setErrorConexion('');
+      alert('Seguridad activada. La inicialización del primer Administrador quedó cerrada.');
+      return true;
+    } catch (error) {
+      console.error('Error activando seguridad:', error);
+      alert(`No se pudo activar la seguridad. Detalle: ${error.message || 'error desconocido'}.`);
+      return false;
+    } finally {
+      setGuardando(false);
+    }
   }
 
   async function ejecutarDiagnosticoFirestore() {
@@ -1030,7 +1123,7 @@ function App() {
         actualizadoPor: usuarioAuth?.email || 'Sistema',
       }), 20000, 'Firestore no respondió al guardar la configuración en 20 segundos.');
       setConfigState(limpia);
-      localStorage.setItem('sigv_configuracion_fase4_backup', JSON.stringify(limpia));
+      localStorage.setItem('sigv_configuracion_fase5_backup', JSON.stringify(limpia));
     } catch (error) {
       console.error('Error guardando configuración:', error);
       alert(`No se pudo guardar la configuración en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
@@ -1051,6 +1144,12 @@ function App() {
       alert('Debes ingresar un correo válido para el usuario.');
       return false;
     }
+    const administradorPrincipal = claveUsuarioSigv(seguridad?.primerAdministradorEmail);
+    if (email === administradorPrincipal && (normalizarRolSigv(usuarioEditado.rol) !== 'administrador' || usuarioEditado.activo !== true)) {
+      alert('El Administrador principal protegido no puede quedar inactivo ni cambiarse a Asesor.');
+      return false;
+    }
+
     const usuarioLimpio = normalizarUsuarioSigv({
       ...usuarioEditado,
       id: email,
@@ -1059,7 +1158,7 @@ function App() {
       updatedAtIso: new Date().toISOString(),
       updatedAtMs: Date.now(),
       actualizadoPor: usuarioAuth?.email || 'Sistema',
-      creadoEnFase4A: true,
+      creadoEnFase5A: true,
       provisional: false,
     }, email);
 
@@ -1100,13 +1199,13 @@ function App() {
       alert('No se pudo identificar el correo del usuario autenticado.');
       return;
     }
-    const confirma = window.confirm('Esta acción reiniciará los roles: tu usuario quedará como Administrador activo y los demás usuarios quedarán como Asesor activo. ¿Deseas continuar?');
+    const confirma = window.confirm('Esta acción restablecerá los roles: tu usuario y el Administrador principal protegido conservarán rol Administrador; los demás usuarios quedarán como Asesor activo. ¿Deseas continuar?');
     if (!confirma) return;
 
-    const base = usuariosSigv.length ? usuariosSigv : [perfilAdministradorProvisional(usuarioAuth)];
+    const base = usuariosSigv.length ? usuariosSigv : [perfilAdministradorAutenticado(usuarioAuth)];
     const sinDuplicados = new Map(base.map(u => [claveUsuarioSigv(u.email), u]));
     if (!sinDuplicados.has(emailActual)) {
-      sinDuplicados.set(emailActual, perfilAdministradorProvisional(usuarioAuth));
+      sinDuplicados.set(emailActual, perfilAdministradorAutenticado(usuarioAuth));
     }
 
     const ahoraIso = new Date().toISOString();
@@ -1117,11 +1216,10 @@ function App() {
         ...usuario,
         id: email,
         email,
-        rol: email === emailActual ? 'administrador' : 'asesor',
+        rol: email === emailActual || email === claveUsuarioSigv(seguridad?.primerAdministradorEmail) ? 'administrador' : 'asesor',
         activo: true,
         provisional: false,
-        rescateAdministrador: false,
-        reiniciadoEnFase4A1: true,
+        reiniciadoEnFase5A: true,
         updatedAtIso: ahoraIso,
         updatedAtMs: ahoraMs,
         actualizadoPor: emailActual,
@@ -1142,9 +1240,9 @@ function App() {
       )));
       const ordenados = ordenarUsuariosSigv(reiniciados);
       setUsuariosSigv(ordenados);
-      const perfilNuevo = ordenados.find(u => claveUsuarioSigv(u.email) === emailActual) || perfilAdministradorProvisional(usuarioAuth);
+      const perfilNuevo = ordenados.find(u => claveUsuarioSigv(u.email) === emailActual) || perfilAdministradorAutenticado(usuarioAuth);
       setPerfil(perfilNuevo);
-      alert('Roles reiniciados correctamente. Tu usuario quedó como Administrador activo y los demás como Asesor activo.');
+      alert('Roles reiniciados correctamente. Tu usuario y el Administrador principal protegido conservaron acceso de Administrador; los demás usuarios quedaron como Asesor activo.');
     } catch (error) {
       console.error('Error reiniciando roles SIGV:', error);
       alert(`No se pudieron reiniciar los roles en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
@@ -1186,6 +1284,18 @@ function App() {
     return <Login usuario={usuario} clave={clave} setUsuario={setUsuario} setClave={setClave} onLogin={iniciarSesion} guardando={guardando} />;
   }
 
+  if (cargando && !perfil && !requiereInicializacion) {
+    return <PantallaCargaSegura email={usuarioAuth?.email} />;
+  }
+
+  if (requiereInicializacion) {
+    return <InicializacionSeguridad email={usuarioAuth?.email} onInitialize={inicializarSeguridadInicial} onLogout={cerrarSesion} guardando={inicializandoSeguridad} />;
+  }
+
+  if (!cargando && !perfil) {
+    return <ErrorConexionSegura mensaje={errorConexion} onRetry={() => window.location.reload()} onLogout={cerrarSesion} />;
+  }
+
   if (perfil && !permisos.activo) {
     return <AccesoBloqueado perfil={perfil} onLogout={cerrarSesion} />;
   }
@@ -1219,13 +1329,12 @@ function App() {
 
       <div className="connection-row">
         <span className="pill ok">Firebase conectado</span>
+        <span className={seguridad.primerAdministradorConfigurado ? 'pill ok' : 'pill warn'}>{seguridad.primerAdministradorConfigurado ? 'Seguridad activa' : 'Seguridad pendiente'}</span>
         <span className="pill info">Rol: {rolesSigv[permisos.rol]?.label || 'Sin rol'}</span>
         <small>{perfil?.nombre || usuarioAuth?.email} · {usuarioAuth?.email}</small>
         {guardando && <small>Guardando cambios...</small>}
         <button className="mini-button" type="button" onClick={ejecutarDiagnosticoFirestore}>Probar Firestore</button>
       </div>
-
-      {perfil?.provisional && <div className="alert-box diagnostic">{perfil?.rescateAdministrador ? 'No hay ningún Administrador activo en usuariosSigv. Se activó este usuario como Administrador provisional para que puedas reiniciar o corregir los roles.' : 'Este usuario no tiene aún un perfil en la colección usuariosSigv. Se activó como Administrador provisional para que puedas configurar los roles iniciales desde Configuración.'}</div>}
 
       {diagnostico && <div className="alert-box diagnostic">{diagnostico}</div>}
       {errorConexion && <div className="alert-box">{errorConexion}</div>}
@@ -1243,7 +1352,7 @@ function App() {
 
       {!cargando && vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
 
-      {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} onResetRoles={reiniciarRolesSigv} guardando={guardando} perfilActual={perfil} />}
+      {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} onResetRoles={reiniciarRolesSigv} guardando={guardando} perfilActual={perfil} seguridad={seguridad} onActivateSecurity={activarSeguridadManual} />}
     </main>
   </div>;
 }
@@ -1267,12 +1376,56 @@ function Login({ usuario, clave, setUsuario, setClave, onLogin, guardando = fals
 }
 
 
-function AccesoBloqueado({ perfil, onLogout }) {
+function PantallaCargaSegura({ email = '' }) {
   return <div className="login-page">
     <section className="login-card">
       <div className="brand">SIGV</div>
-      <h1>Acceso inactivo</h1>
-      <p>El usuario {perfil?.email} existe en SIGV, pero está marcado como inactivo. Solicita a un Administrador que active nuevamente el acceso.</p>
+      <h1>Validando acceso</h1>
+      <p>Estamos verificando en Firestore el perfil y los permisos de {email || 'este usuario'}.</p>
+      <small>No se habilitarán permisos hasta completar esta validación.</small>
+    </section>
+  </div>;
+}
+
+function InicializacionSeguridad({ email = '', onInitialize, onLogout, guardando = false }) {
+  return <div className="login-page">
+    <section className="login-card security-card">
+      <div className="brand">SIGV</div>
+      <h1>Configurar primer Administrador</h1>
+      <p>La instalación todavía no tiene cerrado el proceso de seguridad. El correo autenticado quedará registrado como Administrador principal:</p>
+      <strong className="security-email">{email}</strong>
+      <div className="alert-box diagnostic">Realiza este paso únicamente con la cuenta que administrará usuarios, configuración y eliminación de asesorías.</div>
+      <button type="button" onClick={onInitialize} disabled={guardando}>{guardando ? 'Configurando...' : 'Configurar y cerrar inicialización'}</button>
+      <button type="button" className="secondary" onClick={onLogout} disabled={guardando}>Cerrar sesión</button>
+    </section>
+  </div>;
+}
+
+function ErrorConexionSegura({ mensaje = '', onRetry, onLogout }) {
+  return <div className="login-page">
+    <section className="login-card security-card">
+      <div className="brand">SIGV</div>
+      <h1>Acceso no validado</h1>
+      <p>SIGV no pudo confirmar el perfil en Firestore. Por seguridad no se concedieron permisos temporales.</p>
+      {mensaje && <div className="alert-box">{mensaje}</div>}
+      <button type="button" onClick={onRetry}>Reintentar</button>
+      <button type="button" className="secondary" onClick={onLogout}>Cerrar sesión</button>
+    </section>
+  </div>;
+}
+
+function AccesoBloqueado({ perfil, onLogout }) {
+  const sinPerfil = perfil?.motivoBloqueo === 'sinPerfil';
+  const rolInvalido = !sinPerfil && perfil?.activo === true && !normalizarRolSigv(perfil?.rol);
+  return <div className="login-page">
+    <section className="login-card security-card">
+      <div className="brand">SIGV</div>
+      <h1>{sinPerfil ? 'Usuario sin autorización' : rolInvalido ? 'Rol no válido' : 'Acceso inactivo'}</h1>
+      <p>{sinPerfil
+        ? `El correo ${perfil?.email} existe en Firebase Authentication, pero no tiene un perfil autorizado en usuariosSigv.`
+        : rolInvalido
+          ? `El usuario ${perfil?.email} no tiene un rol válido. Solicita a un Administrador que asigne Administrador o Asesor.`
+          : `El usuario ${perfil?.email} existe en SIGV, pero está marcado como inactivo. Solicita a un Administrador que active nuevamente el acceso.`}</p>
       <button type="button" onClick={onLogout}>Cerrar sesión</button>
     </section>
   </div>;
@@ -1900,7 +2053,7 @@ function ModalNotificacion({ modal, onClose, onConfirm }) {
   </div>;
 }
 
-function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, onResetRoles, guardando = false, perfilActual = null }) {
+function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, onResetRoles, guardando = false, perfilActual = null, seguridad = {}, onActivateSecurity }) {
   const [borrador, setBorrador] = useState(() => normalizarConfiguracion(config));
   const [nuevaAsesora, setNuevaAsesora] = useState('');
   const [usuarioRol, setUsuarioRol] = useState({ nombre: '', email: '', rol: 'asesor', activo: true });
@@ -2011,13 +2164,33 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
       <button type="button" className="primary fit" onClick={guardarConfiguracion} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar'}</button>
     </section>
 
+    <section className="panel security-panel">
+      <div className="section-title">
+        <div>
+          <h2>Seguridad de acceso</h2>
+          <p>Los permisos se validan en Firestore y no solamente en la interfaz.</p>
+        </div>
+        <span className={seguridad?.primerAdministradorConfigurado ? 'pill ok' : 'pill warn'}>{seguridad?.primerAdministradorConfigurado ? 'Protección activa' : 'Activación pendiente'}</span>
+      </div>
+      {seguridad?.primerAdministradorConfigurado ? <>
+        <p><strong>Administrador principal protegido:</strong> {seguridad?.primerAdministradorEmail || perfilActual?.email}</p>
+        <p className="hint">Los usuarios sin perfil quedan bloqueados. Solo un Administrador activo puede modificar usuarios, configuración o eliminar asesorías.</p>
+      </> : <div className="actions-row compact">
+        <div>
+          <strong>Falta cerrar la inicialización de seguridad.</strong>
+          <p className="hint">Actívala antes de publicar las reglas estrictas incluidas en este paquete.</p>
+        </div>
+        <button type="button" className="primary fit" onClick={onActivateSecurity} disabled={guardando}>{guardando ? 'Activando...' : 'Activar seguridad'}</button>
+      </div>}
+    </section>
+
     <section className="panel">
       <div className="section-title">
         <div>
           <h2>Usuarios y roles</h2>
           <p>Primero crea el usuario en Firebase Authentication. Luego registra aquí el mismo correo y asigna su rol operativo dentro de SIGV.</p>
         </div>
-        <span className="pending-save">Fase 4A</span>
+        <span className="pending-save">Fase 5A</span>
       </div>
 
       <div className="role-grid">
@@ -2039,7 +2212,7 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
           <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Acción</th></tr></thead>
           <tbody>
             {usuariosSigv.map(usuario => <tr key={usuario.email || usuario.id}>
-              <td>{usuario.nombre}{usuario.provisional && <><br /><small>Administrador provisional</small></>}</td>
+              <td>{usuario.nombre}</td>
               <td>{usuario.email}</td>
               <td><span className="pill info">{rolesSigv[normalizarRolSigv(usuario.rol)]?.label}</span></td>
               <td><span className={usuario.activo ? 'pill ok' : 'pill warn'}>{usuario.activo ? 'Activo' : 'Inactivo'}</span></td>
@@ -2076,7 +2249,6 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
         }}>{guardando ? 'Guardando...' : 'Guardar usuario/rol'}</button>
         <button type="button" className="secondary fit" onClick={() => setUsuarioRol({ nombre: '', email: '', rol: 'asesor', activo: true })}>Limpiar</button>
       </div>
-      {perfilActual?.provisional && <p className="hint">Recomendación: guarda tu propio correo como Administrador para reemplazar el acceso provisional por un perfil real en Firestore.</p>}
     </section>
 
     <section className="panel">

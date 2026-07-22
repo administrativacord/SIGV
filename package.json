@@ -1,19 +1,23 @@
 {
-  "name": "sigv-web-fase-4a4-asesorias",
-  "version": "4.0.4-a",
+  "name": "sigv-web-fase-5a-seguridad-reconstruida",
+  "version": "5.0.1-a",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "node scripts/validate-project.mjs"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "firebase": "latest"
+    "firebase": "11.10.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "vite": "7.3.1"
+  }
 }
