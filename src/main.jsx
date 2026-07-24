@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.2 Web · Datos y solicitud unificados';
-const BUILD_ID = '2026-07-21-05C2';
+const APP_VERSION = 'Fase 5C.3 Web · Precio manual por integrante';
+const BUILD_ID = '2026-07-24-05C3';
 
 
 const rolesSigv = {
@@ -205,6 +205,25 @@ function crearIntegrante(numero = 1, base = {}) {
     documentos,
     documentosObj: documentos,
   };
+}
+
+function normalizarAjustesPrecio(ajustes = {}) {
+  if (!ajustes || typeof ajustes !== 'object' || Array.isArray(ajustes)) return {};
+  return Object.fromEntries(Object.entries(ajustes).flatMap(([integranteId, valor]) => {
+    const numero = Number(valor);
+    if (!integranteId || !Number.isFinite(numero) || numero < 0) return [];
+    return [[integranteId, Math.round(numero)]];
+  }));
+}
+
+function precioManualIntegrante(ajustes = {}, integranteId = '') {
+  const normalizados = normalizarAjustesPrecio(ajustes);
+  return Object.prototype.hasOwnProperty.call(normalizados, integranteId) ? normalizados[integranteId] : null;
+}
+
+function ajustesPrecioParaIntegrantes(ajustes = {}, integrantes = []) {
+  const ids = new Set(normalizarIntegrantes({ integrantes }).map(integrante => integrante.id));
+  return Object.fromEntries(Object.entries(normalizarAjustesPrecio(ajustes)).filter(([integranteId]) => ids.has(integranteId)));
 }
 
 function normalizarIntegrantes(data = {}) {
@@ -423,6 +442,7 @@ function inicialFormulario() {
     facturacion: crearFacturacion('primeraVez'),
     fechaCitaEmbajada: '',
     estadoManual: '',
+    ajustesPrecio: {},
   };
 }
 
@@ -523,6 +543,31 @@ function moneda(valor) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(valor);
 }
 
+function describirCambiosPrecio(casoAnterior = {}, casoNuevo = {}, config = configuracionBase) {
+  const anteriores = normalizarAjustesPrecio(casoAnterior.ajustesPrecio);
+  const nuevos = normalizarAjustesPrecio(casoNuevo.ajustesPrecio);
+  const integrantes = normalizarIntegrantes(casoNuevo);
+  const cambios = [];
+
+  for (const integrante of integrantes) {
+    const anterior = precioManualIntegrante(anteriores, integrante.id);
+    const nuevo = precioManualIntegrante(nuevos, integrante.id);
+    if (anterior === nuevo) continue;
+
+    const nombre = integrante.nombre || `Integrante ${integrantes.indexOf(integrante) + 1}`;
+    const tarifaConfigurada = normalizarConfiguracion(config).tarifas[integrante.tipoCliente]?.[integrante.tipoSolicitud];
+    if (nuevo === null) {
+      cambios.push(`${nombre}: se restauró la tarifa configurada (${moneda(tarifaConfigurada)}).`);
+    } else if (anterior === null) {
+      cambios.push(`${nombre}: precio personalizado establecido en ${moneda(nuevo)}.`);
+    } else {
+      cambios.push(`${nombre}: precio personalizado cambió de ${moneda(anterior)} a ${moneda(nuevo)}.`);
+    }
+  }
+
+  return cambios.join(' ');
+}
+
 function normalizar(texto = '') {
   return String(texto).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
@@ -571,11 +616,13 @@ function estadoAutomaticoProceso(requeridos, data = {}) {
   return 'Pendiente Documentación';
 }
 
-function calcularIntegrante(integrante, config = configuracionBase, indice = 0) {
+function calcularIntegrante(integrante, config = configuracionBase, indice = 0, ajustesPrecio = {}) {
   const configuracion = normalizarConfiguracion(config);
   const tipoCliente = integrante.tipoClienteKey || integrante.tipoCliente || 'afiliado';
   const tipoSolicitud = integrante.tipoSolicitudKey || integrante.tipoSolicitud || 'primeraVez';
-  const tarifa = configuracion.tarifas[tipoCliente]?.[tipoSolicitud];
+  const tarifaConfigurada = configuracion.tarifas[tipoCliente]?.[tipoSolicitud];
+  const precioManual = precioManualIntegrante(ajustesPrecio, integrante.id);
+  const tarifa = precioManual !== null ? precioManual : tarifaConfigurada;
   const requeridos = documentosRequeridos(tipoSolicitud);
   const docs = integrante.documentosObj || integrante.documentos || {};
   const completos = requeridos.filter(id => docs[id]).length;
@@ -591,6 +638,9 @@ function calcularIntegrante(integrante, config = configuracionBase, indice = 0) 
     tipoClienteKey: tipoCliente,
     tipoSolicitudKey: tipoSolicitud,
     tarifa,
+    tarifaConfigurada,
+    precioManual,
+    precioPersonalizado: precioManual !== null,
     requeridos,
     completos,
     faltantes,
@@ -604,7 +654,8 @@ function calcularIntegrante(integrante, config = configuracionBase, indice = 0) 
 function calcularCaso(data, config = configuracionBase) {
   const configuracion = normalizarConfiguracion(config);
   const integrantes = normalizarIntegrantes(data);
-  const detalleIntegrantes = integrantes.map((integrante, indice) => calcularIntegrante(integrante, configuracion, indice));
+  const ajustesPrecio = normalizarAjustesPrecio(data.ajustesPrecio);
+  const detalleIntegrantes = integrantes.map((integrante, indice) => calcularIntegrante(integrante, configuracion, indice, ajustesPrecio));
   const subtotalAsesoria = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.tarifa) || 0), 0);
   const porcentajeDescuento = porcentajeDescuentoPorCantidad(detalleIntegrantes.length);
   const valorDescuento = Math.round(subtotalAsesoria * porcentajeDescuento);
@@ -1102,6 +1153,7 @@ function App() {
       asesor: form.asesor.trim(),
       cantidad: integrantes.length,
       integrantes: integrantes.map(serializarIntegrante),
+      ajustesPrecio: normalizarAjustesPrecio(form.ajustesPrecio),
       nombre: principal.nombre.trim(),
       telefono: principal.telefono.trim(),
       email: principal.email.trim(),
@@ -1170,6 +1222,7 @@ function App() {
     const principal = integrantes[0] || crearIntegrante(1);
     const calc = calcularCaso({
       integrantes,
+      ajustesPrecio: casoActualizado.ajustesPrecio,
       estadoManual: casoActualizado.estadoManual,
     }, config);
     const actualizadoPor = usuarioAuth?.email || 'Sistema';
@@ -1177,6 +1230,7 @@ function App() {
       ...casoActualizado,
       cantidad: integrantes.length,
       integrantes: integrantes.map(serializarIntegrante),
+      ajustesPrecio: normalizarAjustesPrecio(casoActualizado.ajustesPrecio),
       nombre: principal.nombre,
       telefono: principal.telefono,
       email: principal.email,
@@ -1458,7 +1512,7 @@ function App() {
 
       {!cargando && vista === 'dashboard' && <Dashboard casos={casos} onOpen={abrirCaso} />}
 
-      {!cargando && vista === 'nuevoCaso' && permisos.puedeCrearCasos && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} config={config} guardando={guardando} perfil={perfil} />}
+      {!cargando && vista === 'nuevoCaso' && permisos.puedeCrearCasos && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
       {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} />}
 
@@ -1775,18 +1829,29 @@ function CalendarioAsesorias({ casos, onOpen }) {
   </section>;
 }
 
-function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = false }) {
+function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = false, permisos = {} }) {
   const integrantes = normalizarIntegrantes(form);
   const principal = integrantes[0] || crearIntegrante(1);
 
   function cambiarCantidad(valor) {
     const nuevaCantidad = Math.max(1, Math.min(30, Number(valor) || 1));
     const nuevosIntegrantes = ajustarCantidadIntegrantes(integrantes, nuevaCantidad);
-    setForm({ ...form, cantidad: nuevaCantidad, integrantes: nuevosIntegrantes });
+    setForm(prev => ({
+      ...prev,
+      cantidad: nuevaCantidad,
+      integrantes: nuevosIntegrantes,
+      ajustesPrecio: ajustesPrecioParaIntegrantes(prev.ajustesPrecio, nuevosIntegrantes),
+    }));
   }
 
   function actualizarIntegrantes(nuevosIntegrantes) {
-    setForm({ ...form, cantidad: nuevosIntegrantes.length, integrantes: nuevosIntegrantes, estadoManual: '' });
+    setForm(prev => ({
+      ...prev,
+      cantidad: nuevosIntegrantes.length,
+      integrantes: nuevosIntegrantes,
+      ajustesPrecio: ajustesPrecioParaIntegrantes(prev.ajustesPrecio, nuevosIntegrantes),
+      estadoManual: '',
+    }));
   }
 
   return <form className="process-layout" onSubmit={guardarCaso}>
@@ -1800,7 +1865,14 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
       </label>
       <p className="hint">Usa este campo cuando la asesoría sea de un grupo familiar o tenga varios solicitantes. Según la cantidad, se despliegan datos, solicitud y documentos para cada integrante.</p>
 
-      <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
+      <IntegrantesSecciones
+        integrantes={integrantes}
+        onChange={actualizarIntegrantes}
+        config={config}
+        ajustesPrecio={form.ajustesPrecio}
+        onAjustesPrecioChange={ajustesPrecio => setForm(prev => ({ ...prev, ajustesPrecio }))}
+        puedeEditarPrecio={permisos.esAdministrador}
+      />
 
       <h2>5. Asesoría</h2>
       <div className="two-cols">
@@ -1860,16 +1932,60 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
   </form>;
 }
 
-function IntegrantesSecciones({ integrantes, onChange, config }) {
+function IntegrantesSecciones({ integrantes, onChange, config, ajustesPrecio = {}, onAjustesPrecioChange, puedeEditarPrecio = false }) {
   const lista = normalizarIntegrantes({ integrantes });
+  const ajustesNormalizados = normalizarAjustesPrecio(ajustesPrecio);
+  const [precioEditandoId, setPrecioEditandoId] = useState('');
+  const [precioBorrador, setPrecioBorrador] = useState('');
+
+  function abrirEditorPrecio(integrante) {
+    if (!puedeEditarPrecio) return;
+    const tarifaConfigurada = config.tarifas[integrante.tipoCliente]?.[integrante.tipoSolicitud];
+    const precioActual = precioManualIntegrante(ajustesNormalizados, integrante.id);
+    setPrecioEditandoId(integrante.id);
+    setPrecioBorrador(String(precioActual !== null ? precioActual : (tarifaConfigurada ?? '')));
+  }
+
+  function aplicarPrecio(integrante) {
+    const numero = Number(precioBorrador);
+    if (!Number.isFinite(numero) || numero < 0) {
+      alert('Ingresa un precio válido, igual o mayor a cero.');
+      return;
+    }
+    onAjustesPrecioChange?.({ ...ajustesNormalizados, [integrante.id]: Math.round(numero) });
+    setPrecioEditandoId('');
+    setPrecioBorrador('');
+  }
+
+  function restaurarPrecio(integrante) {
+    const nuevos = { ...ajustesNormalizados };
+    delete nuevos[integrante.id];
+    onAjustesPrecioChange?.(nuevos);
+    setPrecioEditandoId('');
+    setPrecioBorrador('');
+  }
+
+  function quitarPrecioPersonalizado(integranteId) {
+    if (precioManualIntegrante(ajustesNormalizados, integranteId) === null) return;
+    const nuevos = { ...ajustesNormalizados };
+    delete nuevos[integranteId];
+    onAjustesPrecioChange?.(nuevos);
+  }
 
   function actualizarIntegrante(indice, cambios) {
     const nuevos = lista.map((integrante, i) => i === indice ? crearIntegrante(i + 1, { ...integrante, ...cambios }) : integrante);
     onChange(nuevos);
   }
 
+  function cambiarTipoCliente(indice, tipoCliente) {
+    const integrante = lista[indice];
+    quitarPrecioPersonalizado(integrante.id);
+    actualizarIntegrante(indice, { tipoCliente, tipoClienteKey: tipoCliente });
+  }
+
   function cambiarSolicitud(indice, tipoSolicitud) {
     const integrante = lista[indice];
+    quitarPrecioPersonalizado(integrante.id);
     const documentosActuales = integrante.documentos || {};
     const nuevosDocs = Object.fromEntries(documentosRequeridos(tipoSolicitud).map(id => [id, !!documentosActuales[id]]));
     actualizarIntegrante(indice, { tipoSolicitud, tipoSolicitudKey: tipoSolicitud, fedex: '', documentos: nuevosDocs, documentosObj: nuevosDocs });
@@ -1892,7 +2008,7 @@ function IntegrantesSecciones({ integrantes, onChange, config }) {
         </div>
         <div className="two-cols">
           <label>Tipo de cliente / paquete
-            <select value={integrante.tipoCliente} onChange={e => actualizarIntegrante(indice, { tipoCliente: e.target.value, tipoClienteKey: e.target.value })}>
+            <select value={integrante.tipoCliente} onChange={e => cambiarTipoCliente(indice, e.target.value)}>
               {Object.entries(config.tarifas).map(([id, t]) => <option key={id} value={id}>{t.label}</option>)}
             </select>
           </label>
@@ -1902,6 +2018,30 @@ function IntegrantesSecciones({ integrantes, onChange, config }) {
             </select>
           </label>
         </div>
+        {(() => {
+          const tarifaConfigurada = config.tarifas[integrante.tipoCliente]?.[integrante.tipoSolicitud];
+          const precioManual = precioManualIntegrante(ajustesNormalizados, integrante.id);
+          const precioActual = precioManual !== null ? precioManual : tarifaConfigurada;
+          return <div className="integrante-price-row">
+            <div>
+              <small>Valor de la asesoría</small>
+              <strong>{precioActual === null || precioActual === undefined ? 'No aplica' : moneda(precioActual)}</strong>
+              {precioManual !== null && <span>Precio personalizado</span>}
+            </div>
+            {puedeEditarPrecio && precioEditandoId !== integrante.id && tarifaConfigurada !== null && tarifaConfigurada !== undefined && <button type="button" className="price-edit-button" onClick={() => abrirEditorPrecio(integrante)}>✎ Editar precio</button>}
+            {puedeEditarPrecio && precioEditandoId === integrante.id && <div className="price-editor">
+              <label>Nuevo precio base
+                <input type="number" min="0" step="1000" value={precioBorrador} onChange={e => setPrecioBorrador(e.target.value)} autoFocus />
+              </label>
+              <div className="price-editor-actions">
+                <button type="button" className="price-apply-button" onClick={() => aplicarPrecio(integrante)}>Aplicar</button>
+                <button type="button" className="price-cancel-button" onClick={() => { setPrecioEditandoId(''); setPrecioBorrador(''); }}>Cancelar</button>
+                {precioManual !== null && <button type="button" className="price-reset-button" onClick={() => restaurarPrecio(integrante)}>Restaurar tarifa</button>}
+              </div>
+              <small>El descuento por cantidad, si aplica, se calculará sobre este nuevo precio.</small>
+            </div>}
+          </div>;
+        })()}
         {integrante.tipoSolicitud === 'primeraVez' && <label>Valor informativo FedEx si la visa es aprobada
           <select value={integrante.fedex || ''} onChange={e => actualizarIntegrante(indice, { fedex: e.target.value })}>
             <option value="">No aplica / pendiente por definir</option>
@@ -2002,16 +2142,28 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
 
   const integrantes = normalizarIntegrantes(edit);
   const principal = integrantes[0] || crearIntegrante(1);
-  const calc = calcularCaso({ integrantes, estadoManual: edit.estadoManual }, config);
+  const calc = calcularCaso({ integrantes, ajustesPrecio: edit.ajustesPrecio, estadoManual: edit.estadoManual }, config);
 
   function cambiarCantidad(valor) {
     const nuevaCantidad = Math.max(1, Math.min(30, Number(valor) || 1));
     const nuevosIntegrantes = ajustarCantidadIntegrantes(integrantes, nuevaCantidad);
-    setEdit({ ...edit, cantidad: nuevaCantidad, integrantes: nuevosIntegrantes, estadoManual: '' });
+    setEdit(prev => ({
+      ...prev,
+      cantidad: nuevaCantidad,
+      integrantes: nuevosIntegrantes,
+      ajustesPrecio: ajustesPrecioParaIntegrantes(prev.ajustesPrecio, nuevosIntegrantes),
+      estadoManual: '',
+    }));
   }
 
   function actualizarIntegrantes(nuevosIntegrantes) {
-    setEdit({ ...edit, cantidad: nuevosIntegrantes.length, integrantes: nuevosIntegrantes, estadoManual: '' });
+    setEdit(prev => ({
+      ...prev,
+      cantidad: nuevosIntegrantes.length,
+      integrantes: nuevosIntegrantes,
+      ajustesPrecio: ajustesPrecioParaIntegrantes(prev.ajustesPrecio, nuevosIntegrantes),
+      estadoManual: '',
+    }));
   }
 
   function guardar(motivo = 'Asesoría actualizada desde detalle.') {
@@ -2035,7 +2187,9 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
         return;
       }
     }
-    onSave({ ...edit, integrantes }, motivo);
+    const cambioPrecio = describirCambiosPrecio(caso, { ...edit, integrantes }, config);
+    const motivoFinal = cambioPrecio ? `${motivo} ${cambioPrecio}` : motivo;
+    onSave({ ...edit, integrantes }, motivoFinal);
     alert('Asesoría actualizada.');
   }
 
@@ -2079,7 +2233,14 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
         </label>
         <p className="hint">Al aumentar la cantidad se habilitan nuevos campos de datos, solicitud y documentos. Al reducirla, se eliminan los últimos integrantes del formulario.</p>
 
-        <IntegrantesSecciones integrantes={integrantes} onChange={actualizarIntegrantes} config={config} />
+        <IntegrantesSecciones
+          integrantes={integrantes}
+          onChange={actualizarIntegrantes}
+          config={config}
+          ajustesPrecio={edit.ajustesPrecio}
+          onAjustesPrecioChange={ajustesPrecio => setEdit(prev => ({ ...prev, ajustesPrecio }))}
+          puedeEditarPrecio={permisos.esAdministrador}
+        />
 
         <h2>5. Asesoría</h2>
         <div className="two-cols">
@@ -2328,7 +2489,8 @@ function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, 
           <Line label="Nombre" value={detalle.nombre || 'Pendiente'} />
           <Line label="Tipo de solicitud" value={textoSolicitud(detalle.tipoSolicitud)} />
           <Line label="Valor" value={moneda(valorFinalIntegrante)} />
-          {descuentoPorcentaje > 0 && <small>Tarifa base: {moneda(tarifaBase)} · descuento aplicado: {Math.round(descuentoPorcentaje * 100)}%</small>}
+          {detalle.precioPersonalizado && descuentoPorcentaje === 0 && <small>Precio personalizado aplicado.</small>}
+          {descuentoPorcentaje > 0 && <small>{detalle.precioPersonalizado ? 'Precio base personalizado' : 'Tarifa base'}: {moneda(tarifaBase)} · descuento aplicado: {Math.round(descuentoPorcentaje * 100)}%</small>}
         </div>;
       })}
     </div>

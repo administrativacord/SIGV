@@ -428,3 +428,48 @@ button.calendar-cell:hover { transform: none; background: #f8fbff; }
   .integrante-subsection { align-items: flex-start; flex-direction: column; gap: 3px; }
   .integrante-subsection span { text-align: left; }
 }
+
+/* Fase 5C.3 · Ajuste manual de precio por integrante */
+.integrante-price-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 2px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4ef;
+  border-radius: 13px;
+  background: #fff;
+}
+.integrante-price-row > div:first-child { display: grid; gap: 2px; }
+.integrante-price-row > div:first-child small { font-size: 11px; }
+.integrante-price-row > div:first-child strong { color: #0f172a; font-size: 14px; }
+.integrante-price-row > div:first-child span { color: #1d4ed8; font-size: 10px; font-weight: 900; }
+.price-edit-button {
+  flex: 0 0 auto;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 9px;
+  padding: 6px 9px;
+  font-size: 11px;
+}
+.price-editor {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 7px;
+  padding-top: 4px;
+}
+.price-editor label { margin: 0; font-size: 12px; }
+.price-editor input { max-width: 220px; padding: 8px 10px; border-radius: 9px; }
+.price-editor-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.price-editor-actions button { padding: 6px 9px; border-radius: 9px; font-size: 11px; }
+.price-apply-button { background: #0b5cab; color: #fff; }
+.price-cancel-button { background: #e2e8f0; color: #334155; }
+.price-reset-button { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+.price-editor > small { font-size: 10px; line-height: 1.35; }
+@media (max-width: 680px) {
+  .integrante-price-row { align-items: flex-start; flex-wrap: wrap; }
+  .price-editor input { max-width: none; width: 100%; }
+}

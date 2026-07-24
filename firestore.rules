@@ -95,8 +95,27 @@ service cloud.firestore {
         || (request.resource.data.rol == 'administrador' && request.resource.data.activo == true);
     }
 
+    function noPriceOverridesOnCreate() {
+      return !('ajustesPrecio' in request.resource.data)
+        || request.resource.data.ajustesPrecio == {};
+    }
+
+    function preservesPriceOverrides() {
+      return (
+          !('ajustesPrecio' in resource.data)
+          && (!('ajustesPrecio' in request.resource.data) || request.resource.data.ajustesPrecio == {})
+        )
+        || (
+          ('ajustesPrecio' in resource.data)
+          && ('ajustesPrecio' in request.resource.data)
+          && request.resource.data.ajustesPrecio == resource.data.ajustesPrecio
+        );
+    }
+
     match /casos/{casoId} {
-      allow read, create, update: if activeUser();
+      allow read: if activeUser();
+      allow create: if activeAdmin() || (activeUser() && noPriceOverridesOnCreate());
+      allow update: if activeAdmin() || (activeUser() && preservesPriceOverrides());
       allow delete: if activeAdmin();
     }
 

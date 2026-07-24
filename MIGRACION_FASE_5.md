@@ -94,3 +94,9 @@ Si se publicaron las reglas antes de configurar correctamente al Administrador:
 5. Publica nuevamente las reglas estrictas.
 
 No elimines `configuracion/seguridad` después de la activación.
+
+## Nota adicional para Fase 5C.3 · Precio manual por integrante
+
+Esta versión agrega protección específica para `ajustesPrecio`. Después de publicar el frontend 5C.3, vuelve a publicar `firestore.rules` para que el ajuste manual de precios quede restringido realmente al rol Administrador.
+
+No requiere migrar documentos existentes: las asesorías antiguas sin `ajustesPrecio` continúan usando las tarifas generales.

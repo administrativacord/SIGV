@@ -1,66 +1,57 @@
-# SIGV Web · Fase 5C.2 · Datos y solicitud unificados
+# SIGV Web · Fase 5C.3 · Precio manual por integrante
 
-Esta versión continúa sobre **2.9.1 / Fase 5C.1** y simplifica el formulario uniendo los datos del cliente y el tipo de solicitud dentro de una sola tarjeta por integrante.
+Esta versión continúa sobre **2.9.2 / Fase 5C.2** y agrega un ajuste manual de precio por integrante sin alterar las tarifas generales configuradas.
 
 ## Versión
 
-- Aplicación: `5.2.2`
-- Identificación: `Fase 5C.2 Web · Datos y solicitud unificados`
-- Build: `2026-07-21-05C2`
+- Aplicación: `5.2.3`
+- Identificación: `Fase 5C.3 Web · Precio manual por integrante`
+- Build: `2026-07-24-05C3`
 
-## Formulario simplificado
+## Precio individual editable
 
-Los pasos anteriores **3. Datos del cliente** y **4. Tipo de solicitud** se unificaron como:
+Dentro de cada tarjeta de integrante se muestra el valor vigente de la asesoría. Para usuarios con rol **Administrador** aparece un botón discreto **✎ Editar precio**.
 
-- **3. Datos del cliente y tipo de solicitud**
+El Administrador puede:
 
-Cada integrante utiliza una sola tarjeta con nombre, teléfono, correo, tipo de cliente o paquete, tipo de solicitud y FedEx cuando aplica. Los pasos posteriores fueron renumerados: Documentos recibidos 4, Asesoría 5, Facturación 6 y Fecha Cita embajada 7.
+- Reemplazar el precio base únicamente para ese integrante.
+- Ver inmediatamente el nuevo valor reflejado en el Resumen del Proceso.
+- Recalcular automáticamente subtotal, descuento por cantidad y total a facturar.
+- Restaurar la tarifa general configurada mediante **Restaurar tarifa**.
 
-No se modificó la estructura de los datos ni la forma de guardar en Firestore.
+El precio personalizado sustituye la tarifa base del integrante. Los descuentos grupales existentes continúan funcionando: 10 % desde 3 integrantes y 15 % desde 5 integrantes.
 
-## Limpieza de la interfaz
+Al cambiar el tipo de cliente/paquete o el tipo de solicitud de un integrante, cualquier precio personalizado de ese integrante se elimina automáticamente y vuelve a utilizarse la tarifa correspondiente de Configuración.
 
-Se retiraron de Dashboard, Nueva asesoría, Asesorías, Plantillas y Configuración los siguientes elementos técnicos:
+## Seguridad
 
-- Versión y build visibles en el encabezado.
-- Firebase conectado.
-- Seguridad activa o pendiente.
-- Rol de la sesión.
-- Nombre y correo del usuario.
-- Botón Probar Firestore.
-- Resultado del diagnóstico técnico.
+El ajuste de precio no depende únicamente de ocultar el botón en la interfaz. `firestore.rules` protege el nuevo mapa `ajustesPrecio`:
 
-El encabezado conserva solamente el botón de menú, el título de la pantalla y un indicador discreto **Guardando...** cuando existe una operación en curso.
+- Administrador activo: puede crear o modificar precios personalizados.
+- Asesor activo: puede seguir creando y editando asesorías, pero no puede crear ni alterar precios personalizados.
+- Si una asesoría ya posee un precio personalizado, el Asesor puede editar los demás datos siempre que conserve ese ajuste sin modificaciones.
 
-## Nueva sección Estado de la app
+Para que esta protección quede activa en producción deben publicarse también las nuevas reglas de Firestore incluidas en el ZIP.
 
-La nueva opción está disponible para todos los usuarios activos desde el menú lateral. Reúne:
+## Firestore
 
-- Versión instalada y compilación.
-- Estado de la conexión con Firebase.
-- Estado de seguridad.
-- Usuario, correo y rol de la sesión actual.
-- Prueba manual de conexión con Firestore.
-- Resultado del diagnóstico.
-- Alertas técnicas que requieran revisión.
+Los precios personalizados se guardan en cada asesoría dentro de:
 
-Cuando existe una novedad técnica, el menú muestra un pequeño indicador junto a **Estado de la app**, sin llenar de mensajes las pantallas operativas.
+`ajustesPrecio`
+
+Es un mapa cuyo identificador corresponde al integrante y cuyo valor es el precio base personalizado. **No requiere migración de la base de datos.** Las asesorías antiguas que no tengan este campo continúan utilizando las tarifas generales de Configuración.
 
 ## Funciones conservadas
 
-- Calendario mensual con cantidad de asesorías creadas por día.
-- Detalle diario de asesorías e historial de actualizaciones.
-- Diseño principal de dos columnas.
+- Datos del cliente y tipo de solicitud unificados.
+- Calendario mensual y detalle de actividad diaria.
+- Diseño de dos columnas.
 - Resumen del Proceso compacto.
-- Campo Ciudad en Facturación.
-- Medio de pago Wompi.
+- Ciudad en Facturación.
+- Wompi.
+- Estado de la app.
 - Menú lateral plegable.
-- Roles y seguridad de Firestore.
-- Compatibilidad con asesorías anteriores.
-
-## Base de datos
-
-Esta actualización es únicamente visual y de navegación. **No requiere migración ni cambios en Firestore.**
+- Inicialización y seguridad por roles.
 
 ## Instalación
 

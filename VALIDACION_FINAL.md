@@ -1,24 +1,21 @@
-# Validación final · Fase 5C.2
+# Validación final · Fase 5C.3
 
-Validaciones realizadas:
+Validaciones previstas para esta versión:
 
-- Base oficial: `2.9.1_SIGV_Web_Fase_5C1_Estado_de_la_App.zip`.
-- Pasos 3 y 4 unidos como **3. Datos del cliente y tipo de solicitud**.
-- Una sola tarjeta por integrante para datos personales y selección del trámite.
-- Pasos siguientes renumerados del 4 al 7.
-- Nueva opción de navegación **Estado de la app** conservada.
-- Información técnica retirada del encabezado y las pantallas operativas.
-- Versión, build, conexión, seguridad, usuario y rol concentrados en la nueva sección.
-- Prueba Firestore y su resultado ubicados únicamente en Estado de la app.
-- Indicador discreto en el menú cuando existe una novedad técnica.
-- Indicador Guardando visible solo durante operaciones en curso.
-- Dashboard, calendario, detalle diario, Ciudad, Wompi y Resumen del Proceso conservados.
-- Diseño de dos columnas conservado.
-- `firestore.rules`, `src/firebase.js` y `src/firestoreRest.js` sin cambios funcionales.
+- Base oficial: `2.9.2_SIGV_Web_Fase_5C2_Datos_Solicitud_Unificados.zip`.
+- Botón discreto **Editar precio** por integrante.
+- Ajuste disponible únicamente para Administrador en la interfaz.
+- Precio personalizado almacenado en `ajustesPrecio` sin modificar las tarifas generales.
+- Recalculo del subtotal, descuento por cantidad y total usando el nuevo precio.
+- Resumen del Proceso identifica el precio personalizado.
+- Opción **Restaurar tarifa**.
+- Cambio de tipo de cliente o solicitud elimina el precio personalizado anterior.
+- Reducción de integrantes elimina ajustes huérfanos.
+- Reglas Firestore reforzadas para impedir que un Asesor altere `ajustesPrecio`.
+- Asesorías antiguas compatibles sin migración.
+- Calendario, Ciudad, Wompi, dos columnas y Estado de la app conservados.
 - Dependencias con versiones exactas.
 - ZIP sin `node_modules`, `dist` ni `package-lock.json`.
-
-Esta fase no requiere migración ni actualización de Firestore.
 
 Antes de publicar desde una extracción limpia:
 
@@ -28,4 +25,9 @@ npm run check
 npm run build
 ```
 
-La instalación completa de npm fue intentada en el entorno de preparación, pero el registro no respondió dentro del tiempo disponible. La validación estructural y la transpilación JSX sí fueron aprobadas.
+## Resultado en el entorno de preparación
+
+- `npm run check`: aprobado.
+- Transpilación JSX con TypeScript: aprobada.
+- `npm install --package-lock=false`: no finalizó dentro del tiempo disponible del entorno, por lo que `npm run build` no pudo ejecutarse aquí.
+- No se generaron `node_modules`, `dist` ni `package-lock.json` dentro del paquete final.

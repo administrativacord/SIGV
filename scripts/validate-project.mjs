@@ -24,7 +24,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.2') errors.push(`La versión esperada es 5.2.2 y se encontró ${pkg.version}`);
+if (pkg.version !== '5.2.3') errors.push(`La versión esperada es 5.2.3 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -34,7 +34,7 @@ for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {
 }
 
 const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
-for (const expected of ['activeAdmin()', 'bootstrapSecurity()', 'primerAdministradorConfigurado', 'allow delete: if activeAdmin()']) {
+for (const expected of ['activeAdmin()', 'bootstrapSecurity()', 'primerAdministradorConfigurado', 'allow delete: if activeAdmin()', 'preservesPriceOverrides()', 'noPriceOverridesOnCreate()']) {
   if (!rules.includes(expected)) errors.push(`Las reglas no contienen: ${expected}`);
 }
 
@@ -44,7 +44,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C.2 Web · Datos y solicitud unificados",
+  "Fase 5C.3 Web · Precio manual por integrante",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -70,6 +70,13 @@ for (const expected of [
   '>5. Asesoría<',
   '>6. Facturación<',
   '>7. Fecha Cita embajada<',
+  'function normalizarAjustesPrecio',
+  'ajustesPrecio: normalizarAjustesPrecio(form.ajustesPrecio)',
+  'ajustesPrecio: normalizarAjustesPrecio(casoActualizado.ajustesPrecio)',
+  'puedeEditarPrecio={permisos.esAdministrador}',
+  '>✎ Editar precio<',
+  '>Restaurar tarifa<',
+  'Precio personalizado aplicado.',
 ]) {
   if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
 }
@@ -88,6 +95,9 @@ for (const expected of [
   '.status-card',
   '.nav-alert-dot',
   '.save-indicator',
+  '.integrante-price-row',
+  '.price-edit-button',
+  '.price-editor-actions',
 ]) {
   if (!styles.includes(expected)) errors.push(`Los estilos de Fase 5C no contienen: ${expected}`);
 }
@@ -105,4 +115,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C.2 aprobada.');
+console.log('Validación SIGV Fase 5C.3 aprobada.');
