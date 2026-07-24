@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.3 Web · Precio manual por integrante';
-const BUILD_ID = '2026-07-24-05C3';
+const APP_VERSION = 'Fase 5C.4 Web · Total de visas';
+const BUILD_ID = '2026-07-24-05C4';
 
 
 const rolesSigv = {
@@ -179,6 +179,7 @@ function crearFacturacion(tipoTramite = 'primeraVez') {
     correo: '',
     tipoTramite,
     medioPago: '',
+    estadoFactura: 'porFacturar',
     valor: 0,
   };
 }
@@ -568,6 +569,15 @@ function describirCambiosPrecio(casoAnterior = {}, casoNuevo = {}, config = conf
   return cambios.join(' ');
 }
 
+function describirCambioFacturacion(casoAnterior = {}, casoNuevo = {}) {
+  const anterior = casoAnterior.facturacion?.estadoFactura === 'facturada' ? 'facturada' : 'porFacturar';
+  const nuevo = casoNuevo.facturacion?.estadoFactura === 'facturada' ? 'facturada' : 'porFacturar';
+  if (anterior === nuevo) return '';
+  return nuevo === 'facturada'
+    ? 'La asesoría fue marcada como facturada.'
+    : 'La asesoría fue marcada nuevamente como por facturar.';
+}
+
 function normalizar(texto = '') {
   return String(texto).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
@@ -711,6 +721,7 @@ function normalizarFacturacion(facturacion = {}, data = {}, config = configuraci
     correo: facturacion.correo || '',
     tipoTramite,
     medioPago: facturacion.medioPago || '',
+    estadoFactura: facturacion.estadoFactura === 'facturada' ? 'facturada' : 'porFacturar',
     valor: valorCalculado || 0,
   };
 }
@@ -728,6 +739,7 @@ function generarTextoFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', 
     `Correo: ${datos.correo || 'Pendiente'}`,
     `Tipo de trámite: ${textoSolicitud(datos.tipoTramite)}`,
     `Medio de pago: ${datos.medioPago || 'Pendiente'}`,
+    `Estado de facturación: ${datos.estadoFactura === 'facturada' ? 'Facturada' : 'Por facturar'}`,
     `Valor: ${valor === null || valor === undefined ? 'No aplica' : moneda(valor)}`,
   ];
   if (Number(cantidadIntegrantes) > 1) lineas.splice(1, 0, `Cantidad de integrantes: ${cantidadIntegrantes}`);
@@ -1665,11 +1677,20 @@ function Dashboard({ casos, onOpen }) {
   const listos = casos.filter(c => c.estado.includes('Pendiente Agendamiento')).length;
   const agendados = casos.filter(c => c.estado.includes('Asesoría Agendada')).length;
   const facturado = casos.reduce((acc, c) => acc + (Number(c.total) || 0), 0);
+  const visas = casos.reduce((acc, caso) => {
+    const cantidad = normalizarIntegrantes(caso).length || Number(caso.cantidad) || 1;
+    const esFacturada = caso.facturacion?.estadoFactura === 'facturada';
+    acc.total += cantidad;
+    if (esFacturada) acc.facturadas += cantidad;
+    else acc.porFacturar += cantidad;
+    return acc;
+  }, { total: 0, facturadas: 0, porFacturar: 0 });
   const recientes = casos.slice(0, 5);
 
   return <>
     <section className="grid cards">
       <Card title="Asesorías registradas" value={casos.length} />
+      <VisasCard total={visas.total} porFacturar={visas.porFacturar} facturadas={visas.facturadas} />
       <Card title="Pendientes" value={pendientes} />
       <Card title="Pendientes agendamiento" value={listos} />
       <Card title="Asesorías agendadas" value={agendados} />
@@ -2187,9 +2208,12 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
         return;
       }
     }
-    const cambioPrecio = describirCambiosPrecio(caso, { ...edit, integrantes }, config);
-    const motivoFinal = cambioPrecio ? `${motivo} ${cambioPrecio}` : motivo;
-    onSave({ ...edit, integrantes }, motivoFinal);
+    const casoNuevo = { ...edit, integrantes };
+    const cambioPrecio = describirCambiosPrecio(caso, casoNuevo, config);
+    const cambioFacturacion = describirCambioFacturacion(caso, casoNuevo);
+    const detallesCambio = [cambioPrecio, cambioFacturacion].filter(Boolean).join(' ');
+    const motivoFinal = detallesCambio ? `${motivo} ${detallesCambio}` : motivo;
+    onSave(casoNuevo, motivoFinal);
     alert('Asesoría actualizada.');
   }
 
@@ -2457,6 +2481,12 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
           <option value="Wompi">Wompi</option>
         </select>
       </label>
+      <label>Estado de facturación
+        <select value={facturacion.estadoFactura} onChange={e => actualizar('estadoFactura', e.target.value)}>
+          <option value="porFacturar">Por facturar</option>
+          <option value="facturada">Facturada</option>
+        </select>
+      </label>
       <label>Valor
         <input readOnly value={valor === null ? 'No aplica' : moneda(valor)} />
       </label>
@@ -2520,6 +2550,7 @@ function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, 
       <Line label="Ciudad" value={facturacionNormalizada.ciudad || 'Pendiente'} />
       <Line label="Tipo de trámite" value={textoSolicitud(facturacionNormalizada.tipoTramite)} />
       <Line label="Medio de pago" value={facturacionNormalizada.medioPago || 'Pendiente'} />
+      <Line label="Facturación" value={facturacionNormalizada.estadoFactura === 'facturada' ? 'Facturada' : 'Por facturar'} />
       <Line label="Valor" value={facturacionNormalizada.valor ? moneda(facturacionNormalizada.valor) : 'No aplica'} />
     </div>}
     {fechaCitaEmbajada && <p className="hint"><strong>Fecha Cita embajada:</strong> {fechaCitaEmbajada}</p>}
@@ -2544,6 +2575,17 @@ function Field({ label, value, onChange, required = false, type = 'text' }) {
 
 function Card({ title, value }) {
   return <div className="card"><span>{title}</span><strong>{value}</strong></div>;
+}
+
+function VisasCard({ total, porFacturar, facturadas }) {
+  return <div className="card visas-card">
+    <span>Total de visas</span>
+    <strong>{total}</strong>
+    <div className="visas-breakdown">
+      <div><span>Por facturar</span><b>{porFacturar}</b></div>
+      <div><span>Facturadas</span><b>{facturadas}</b></div>
+    </div>
+  </div>;
 }
 
 function Line({ label, value }) {

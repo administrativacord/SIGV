@@ -36,10 +36,17 @@ header h1 { margin: 0; font-size: 30px; color: #0f172a; }
 header p { margin: 5px 0 0; color: #64748b; }
 header span { background: #e0ecff; color: #1d4ed8; padding: 8px 12px; border-radius: 999px; font-weight: 900; white-space: nowrap; }
 
-.grid.cards { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 16px; }
+.grid.cards { display: grid; grid-template-columns: repeat(6, minmax(140px, 1fr)); gap: 14px; }
 .card, .panel { background: white; border-radius: 20px; padding: 22px; box-shadow: 0 8px 22px rgba(15,23,42,.08); }
 .card span { color: #64748b; font-weight: 800; }
 .card strong { display: block; margin-top: 12px; font-size: 27px; color: #0f172a; }
+
+.visas-card { display: grid; align-content: start; }
+.visas-card > strong { margin-bottom: 9px; }
+.visas-breakdown { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+.visas-breakdown div { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.visas-breakdown span { font-size: 12px; font-weight: 700; color: #64748b; }
+.visas-breakdown b { font-size: 14px; color: #0f172a; }
 .panel h2 { margin: 6px 0 16px; color: #0f172a; font-size: 20px; }
 .mt { margin-top: 22px; }
 .case-layout { display: grid; grid-template-columns: 1.45fr .9fr; gap: 22px; align-items: start; }

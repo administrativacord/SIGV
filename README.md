@@ -1,12 +1,12 @@
-# SIGV Web · Fase 5C.3 · Precio manual por integrante
+# SIGV Web · Fase 5C.4 · Precio manual por integrante
 
 Esta versión continúa sobre **2.9.2 / Fase 5C.2** y agrega un ajuste manual de precio por integrante sin alterar las tarifas generales configuradas.
 
 ## Versión
 
 - Aplicación: `5.2.3`
-- Identificación: `Fase 5C.3 Web · Precio manual por integrante`
-- Build: `2026-07-24-05C3`
+- Identificación: `Fase 5C.4 Web · Precio manual por integrante`
+- Build: `2026-07-24-05C4`
 
 ## Precio individual editable
 
@@ -64,3 +64,12 @@ npm run build
 ```
 
 El ZIP no incluye `node_modules/`, `dist/` ni `package-lock.json`.
+
+## Fase 5C.4 - Total de visas
+
+- El Dashboard diferencia asesorías de visas.
+- `Total de visas` suma la cantidad de integrantes de todas las asesorías.
+- Dentro de la misma tarjeta se muestran `Por facturar` y `Facturadas`.
+- Facturación incorpora `Estado de facturación`: Por facturar / Facturada.
+- Las asesorías anteriores sin este campo se consideran `Por facturar` hasta que se actualicen.
+- Una asesoría de 5 integrantes cuenta como 1 asesoría y 5 visas.

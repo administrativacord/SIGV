@@ -1,4 +1,4 @@
-# Validación final · Fase 5C.3
+# Validación final · Fase 5C.4
 
 Validaciones previstas para esta versión:
 
@@ -31,3 +31,16 @@ npm run build
 - Transpilación JSX con TypeScript: aprobada.
 - `npm install --package-lock=false`: no finalizó dentro del tiempo disponible del entorno, por lo que `npm run build` no pudo ejecutarse aquí.
 - No se generaron `node_modules`, `dist` ni `package-lock.json` dentro del paquete final.
+
+## Total de visas
+
+- Validar que una asesoría de N integrantes sume N visas.
+- Los registros antiguos sin `facturacion.estadoFactura` cuentan como `Por facturar`.
+- Al seleccionar `Facturada`, todos los integrantes de esa asesoría pasan al subtotal `Facturadas`.
+- La tarjeta `Total de visas` siempre debe cumplir: Total = Por facturar + Facturadas.
+
+## Build en este entorno
+
+- `npm run check`: aprobado.
+- `npm install --package-lock=false --no-audit --no-fund`: no terminó dentro del tiempo disponible del entorno; no se generó `node_modules`.
+- Antes de publicar: ejecutar `npm install --package-lock=false`, `npm run check` y `npm run build`.

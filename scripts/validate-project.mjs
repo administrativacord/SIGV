@@ -24,7 +24,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.3') errors.push(`La versión esperada es 5.2.3 y se encontró ${pkg.version}`);
+if (pkg.version !== '5.2.4') errors.push(`La versión esperada es 5.2.4 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -44,7 +44,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C.3 Web · Precio manual por integrante",
+  "Fase 5C.4 Web · Total de visas",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -77,6 +77,12 @@ for (const expected of [
   '>✎ Editar precio<',
   '>Restaurar tarifa<',
   'Precio personalizado aplicado.',
+  'function VisasCard',
+  '>Total de visas<',
+  '>Por facturar<',
+  '>Facturadas<',
+  'estadoFactura',
+  '<label>Estado de facturación',
 ]) {
   if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
 }
@@ -115,4 +121,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C.3 aprobada.');
+console.log('Validación SIGV Fase 5C.4 aprobada.');
