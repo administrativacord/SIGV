@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.4 Web · Total de visas';
-const BUILD_ID = '2026-07-24-05C4';
+const APP_VERSION = 'Fase 5C.5 Web · Control de descuento';
+const BUILD_ID = '2026-07-30-05C5';
 
 
 const rolesSigv = {
@@ -444,6 +444,7 @@ function inicialFormulario() {
     fechaCitaEmbajada: '',
     estadoManual: '',
     ajustesPrecio: {},
+    aplicarDescuentoCantidad: true,
   };
 }
 
@@ -609,6 +610,19 @@ function textoDescuentoPorCantidad(cantidad = 1) {
   return `${Math.round(porcentaje * 100)}% por ${cantidad} integrantes`;
 }
 
+function descuentoCantidadActivo(data = {}) {
+  return data.aplicarDescuentoCantidad !== false;
+}
+
+function describirCambioDescuento(casoAnterior = {}, casoNuevo = {}) {
+  const anterior = descuentoCantidadActivo(casoAnterior);
+  const nuevo = descuentoCantidadActivo(casoNuevo);
+  if (anterior === nuevo) return '';
+  return nuevo
+    ? 'Se activó el descuento automático por cantidad.'
+    : 'Se desactivó el descuento automático por cantidad para esta asesoría.';
+}
+
 function estadoAutomaticoProceso(requeridos, data = {}) {
   const detalles = data.detalleIntegrantes || normalizarIntegrantes(data).map((integrante, indice) => {
     const tipoSolicitud = integrante.tipoSolicitudKey || integrante.tipoSolicitud;
@@ -667,7 +681,8 @@ function calcularCaso(data, config = configuracionBase) {
   const ajustesPrecio = normalizarAjustesPrecio(data.ajustesPrecio);
   const detalleIntegrantes = integrantes.map((integrante, indice) => calcularIntegrante(integrante, configuracion, indice, ajustesPrecio));
   const subtotalAsesoria = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.tarifa) || 0), 0);
-  const porcentajeDescuento = porcentajeDescuentoPorCantidad(detalleIntegrantes.length);
+  const aplicarDescuentoCantidad = descuentoCantidadActivo(data);
+  const porcentajeDescuento = aplicarDescuentoCantidad ? porcentajeDescuentoPorCantidad(detalleIntegrantes.length) : 0;
   const valorDescuento = Math.round(subtotalAsesoria * porcentajeDescuento);
   const totalPesos = Math.max(0, subtotalAsesoria - valorDescuento);
   const valorInformativoEnvioBogota = detalleIntegrantes.reduce((acc, detalle) => acc + (Number(detalle.valorInformativoEnvioBogota) || 0), 0);
@@ -681,9 +696,10 @@ function calcularCaso(data, config = configuracionBase) {
   return {
     tarifa: subtotalAsesoria,
     subtotalAsesoria,
+    aplicarDescuentoCantidad,
     porcentajeDescuento,
     valorDescuento,
-    descuentoDescripcion: textoDescuentoPorCantidad(detalleIntegrantes.length),
+    descuentoDescripcion: aplicarDescuentoCantidad ? textoDescuentoPorCantidad(detalleIntegrantes.length) : 'Desactivado manualmente',
     valorInformativoEnvioBogota,
     adicionalRenovacion: valorInformativoEnvioBogota,
     requiereDerechos,
@@ -1166,6 +1182,7 @@ function App() {
       cantidad: integrantes.length,
       integrantes: integrantes.map(serializarIntegrante),
       ajustesPrecio: normalizarAjustesPrecio(form.ajustesPrecio),
+      aplicarDescuentoCantidad: descuentoCantidadActivo(form),
       nombre: principal.nombre.trim(),
       telefono: principal.telefono.trim(),
       email: principal.email.trim(),
@@ -1193,7 +1210,7 @@ function App() {
       createdAtMs: Date.now(),
       updatedAtMs: Date.now(),
       historial: [
-        evento('Creación', `Asesoría creada por ${form.asesor.trim()}. Integrantes: ${integrantes.length}. Documentos recibidos: ${calculo.completos}/${calculo.requeridos.length}.`, form.asesor.trim()),
+        evento('Creación', `Asesoría creada por ${form.asesor.trim()}. Integrantes: ${integrantes.length}. Documentos recibidos: ${calculo.completos}/${calculo.requeridos.length}. Descuento por cantidad: ${descuentoCantidadActivo(form) ? 'activado' : 'desactivado'}.`, form.asesor.trim()),
       ],
     };
 
@@ -1235,6 +1252,7 @@ function App() {
     const calc = calcularCaso({
       integrantes,
       ajustesPrecio: casoActualizado.ajustesPrecio,
+      aplicarDescuentoCantidad: descuentoCantidadActivo(casoActualizado),
       estadoManual: casoActualizado.estadoManual,
     }, config);
     const actualizadoPor = usuarioAuth?.email || 'Sistema';
@@ -1243,6 +1261,7 @@ function App() {
       cantidad: integrantes.length,
       integrantes: integrantes.map(serializarIntegrante),
       ajustesPrecio: normalizarAjustesPrecio(casoActualizado.ajustesPrecio),
+      aplicarDescuentoCantidad: descuentoCantidadActivo(casoActualizado),
       nombre: principal.nombre,
       telefono: principal.telefono,
       email: principal.email,
@@ -1850,6 +1869,28 @@ function CalendarioAsesorias({ casos, onOpen }) {
   </section>;
 }
 
+function ControlDescuentoCantidad({ activo = true, onChange, puedeEditar = false }) {
+  return <div className={`discount-control ${activo ? 'active' : 'inactive'}`}>
+    <div>
+      <strong>Descuento por cantidad</strong>
+      <p>{activo
+        ? 'Se aplicará automáticamente 10% desde 3 integrantes y 15% desde 5.'
+        : 'No se aplicará descuento, sin importar la cantidad de integrantes.'}</p>
+    </div>
+    <button
+      type="button"
+      className={`discount-toggle ${activo ? 'is-on' : 'is-off'}`}
+      onClick={() => puedeEditar && onChange?.(!activo)}
+      disabled={!puedeEditar}
+      aria-pressed={activo}
+      title={puedeEditar ? 'Activar o desactivar el descuento por cantidad' : 'Solo el Administrador puede modificar descuentos'}
+    >
+      {activo ? 'Activado' : 'Desactivado'}
+    </button>
+    {!puedeEditar && <small>Solo el Administrador puede modificar este control.</small>}
+  </div>;
+}
+
 function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = false, permisos = {} }) {
   const integrantes = normalizarIntegrantes(form);
   const principal = integrantes[0] || crearIntegrante(1);
@@ -1885,6 +1926,11 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
         <input type="number" min="1" max="30" value={integrantes.length} onChange={e => cambiarCantidad(e.target.value)} />
       </label>
       <p className="hint">Usa este campo cuando la asesoría sea de un grupo familiar o tenga varios solicitantes. Según la cantidad, se despliegan datos, solicitud y documentos para cada integrante.</p>
+      <ControlDescuentoCantidad
+        activo={descuentoCantidadActivo(form)}
+        onChange={aplicarDescuentoCantidad => setForm(prev => ({ ...prev, aplicarDescuentoCantidad }))}
+        puedeEditar={permisos.esAdministrador}
+      />
 
       <IntegrantesSecciones
         integrantes={integrantes}
@@ -1915,6 +1961,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
         config={config}
         valorCaso={calculo.totalPesos}
         cantidadIntegrantes={integrantes.length}
+        descuentoCantidadHabilitado={calculo.aplicarDescuentoCantidad}
       />
 
       <h2>7. Fecha Cita embajada</h2>
@@ -2163,7 +2210,12 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
 
   const integrantes = normalizarIntegrantes(edit);
   const principal = integrantes[0] || crearIntegrante(1);
-  const calc = calcularCaso({ integrantes, ajustesPrecio: edit.ajustesPrecio, estadoManual: edit.estadoManual }, config);
+  const calc = calcularCaso({
+    integrantes,
+    ajustesPrecio: edit.ajustesPrecio,
+    aplicarDescuentoCantidad: descuentoCantidadActivo(edit),
+    estadoManual: edit.estadoManual,
+  }, config);
 
   function cambiarCantidad(valor) {
     const nuevaCantidad = Math.max(1, Math.min(30, Number(valor) || 1));
@@ -2211,7 +2263,8 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
     const casoNuevo = { ...edit, integrantes };
     const cambioPrecio = describirCambiosPrecio(caso, casoNuevo, config);
     const cambioFacturacion = describirCambioFacturacion(caso, casoNuevo);
-    const detallesCambio = [cambioPrecio, cambioFacturacion].filter(Boolean).join(' ');
+    const cambioDescuento = describirCambioDescuento(caso, casoNuevo);
+    const detallesCambio = [cambioPrecio, cambioFacturacion, cambioDescuento].filter(Boolean).join(' ');
     const motivoFinal = detallesCambio ? `${motivo} ${detallesCambio}` : motivo;
     onSave(casoNuevo, motivoFinal);
     alert('Asesoría actualizada.');
@@ -2256,6 +2309,11 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
           <input type="number" min="1" max="30" value={integrantes.length} onChange={e => cambiarCantidad(e.target.value)} />
         </label>
         <p className="hint">Al aumentar la cantidad se habilitan nuevos campos de datos, solicitud y documentos. Al reducirla, se eliminan los últimos integrantes del formulario.</p>
+        <ControlDescuentoCantidad
+          activo={descuentoCantidadActivo(edit)}
+          onChange={aplicarDescuentoCantidad => setEdit(prev => ({ ...prev, aplicarDescuentoCantidad }))}
+          puedeEditar={permisos.esAdministrador}
+        />
 
         <IntegrantesSecciones
           integrantes={integrantes}
@@ -2286,6 +2344,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
           config={config}
           valorCaso={calc.totalPesos}
           cantidadIntegrantes={integrantes.length}
+          descuentoCantidadHabilitado={calc.aplicarDescuentoCantidad}
         />
 
         <h2>7. Fecha Cita embajada</h2>
@@ -2424,7 +2483,7 @@ function Historial({ historial }) {
   </details>;
 }
 
-function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, datosCliente = {}, config, valorCaso = null, cantidadIntegrantes = 1 }) {
+function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, datosCliente = {}, config, valorCaso = null, cantidadIntegrantes = 1, descuentoCantidadHabilitado = true }) {
   const [copiadoFacturacion, setCopiadoFacturacion] = useState(false);
   const valorFinal = valorCaso !== null && valorCaso !== undefined ? Number(valorCaso) : null;
   const facturacion = normalizarFacturacion(data, { tipoClienteKey, tipoSolicitudKey }, config, valorFinal);
@@ -2459,7 +2518,9 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
     <div className="actions-row compact">
       <button type="button" className="secondary fit" onClick={copiarDatosCliente}>Copiar datos del cliente</button>
       <button type="button" className="primary fit" onClick={copiarDatosFacturacion}>{copiadoFacturacion ? 'Datos copiados' : 'Copiar datos Facturación'}</button>
-      <span className="hint">El valor corresponde a la facturación AmCham de la asesoría. Si hay descuentos por cantidad, ya quedan aplicados en el total.</span>
+      <span className="hint">{descuentoCantidadHabilitado
+        ? 'El valor corresponde a la facturación AmCham. El descuento por cantidad, cuando aplica, ya está incluido.'
+        : 'El valor corresponde a la facturación AmCham sin descuento por cantidad.'}</span>
     </div>
     <div className="two-cols">
       <Field label="Nombre" value={facturacion.nombre} onChange={v => actualizar('nombre', v)} />
@@ -2528,7 +2589,11 @@ function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, 
     <div className="summary-grid">
       <Line label="Integrantes" value={calculo.cantidad || cantidadIntegrantes || 1} />
       <Line label="Subtotal asesoría" value={moneda(calculo.subtotalAsesoria ?? calculo.tarifa)} />
-      <Line label="Descuento por cantidad" value={calculo.valorDescuento ? `${calculo.descuentoDescripcion} · -${moneda(calculo.valorDescuento)}` : 'No aplica'} />
+      <Line label="Descuento por cantidad" value={!calculo.aplicarDescuentoCantidad
+        ? 'Desactivado para esta asesoría'
+        : calculo.valorDescuento
+          ? `${calculo.descuentoDescripcion} · -${moneda(calculo.valorDescuento)}`
+          : 'No aplica por cantidad'} />
       <div className="total"><span>Total a facturar por AmCham</span><strong>{moneda(calculo.totalPesos)}</strong></div>
     </div>
 

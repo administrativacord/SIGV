@@ -1,46 +1,31 @@
-# Validación final · Fase 5C.4
+# Validación final — Fase 5C.5
 
-Validaciones previstas para esta versión:
+## Validaciones incluidas
 
-- Base oficial: `2.9.2_SIGV_Web_Fase_5C2_Datos_Solicitud_Unificados.zip`.
-- Botón discreto **Editar precio** por integrante.
-- Ajuste disponible únicamente para Administrador en la interfaz.
-- Precio personalizado almacenado en `ajustesPrecio` sin modificar las tarifas generales.
-- Recalculo del subtotal, descuento por cantidad y total usando el nuevo precio.
-- Resumen del Proceso identifica el precio personalizado.
-- Opción **Restaurar tarifa**.
-- Cambio de tipo de cliente o solicitud elimina el precio personalizado anterior.
-- Reducción de integrantes elimina ajustes huérfanos.
-- Reglas Firestore reforzadas para impedir que un Asesor altere `ajustesPrecio`.
-- Asesorías antiguas compatibles sin migración.
-- Calendario, Ciudad, Wompi, dos columnas y Estado de la app conservados.
-- Dependencias con versiones exactas.
-- ZIP sin `node_modules`, `dist` ni `package-lock.json`.
+- El proyecto conserva la estructura de dos columnas.
+- El Resumen del Proceso, Total de visas, calendario, Ciudad, Wompi y precio manual por integrante permanecen disponibles.
+- `aplicarDescuentoCantidad` se inicializa en `true` para nuevas asesorías.
+- Los documentos antiguos sin el campo se interpretan como descuento activado.
+- El cálculo aplica 10 % desde 3 integrantes y 15 % desde 5 únicamente cuando el control está activo.
+- El total de Facturación y el Resumen del Proceso usan el valor recalculado.
+- El historial registra la activación o desactivación.
+- Firestore impide que un Asesor modifique el control de descuento.
+- No se incluyen `node_modules`, `dist` ni `package-lock.json`.
 
-Antes de publicar desde una extracción limpia:
+## Comandos recomendados antes de producción
 
 ```bash
 npm install --package-lock=false
 npm run check
 npm run build
+firebase deploy --only firestore:rules
 ```
 
-## Resultado en el entorno de preparación
+## Resultados ejecutados en el entorno de preparación
 
 - `npm run check`: aprobado.
-- Transpilación JSX con TypeScript: aprobada.
-- `npm install --package-lock=false`: no finalizó dentro del tiempo disponible del entorno, por lo que `npm run build` no pudo ejecutarse aquí.
-- No se generaron `node_modules`, `dist` ni `package-lock.json` dentro del paquete final.
-
-## Total de visas
-
-- Validar que una asesoría de N integrantes sume N visas.
-- Los registros antiguos sin `facturacion.estadoFactura` cuentan como `Por facturar`.
-- Al seleccionar `Facturada`, todos los integrantes de esa asesoría pasan al subtotal `Facturadas`.
-- La tarjeta `Total de visas` siempre debe cumplir: Total = Por facturar + Facturadas.
-
-## Build en este entorno
-
-- `npm run check`: aprobado.
-- `npm install --package-lock=false --no-audit --no-fund`: no terminó dentro del tiempo disponible del entorno; no se generó `node_modules`.
-- Antes de publicar: ejecutar `npm install --package-lock=false`, `npm run check` y `npm run build`.
+- Transpilación sintáctica JSX con TypeScript: aprobada.
+- Prueba de cálculo con 3 integrantes y descuento activo: subtotal $450.000, descuento $45.000, total $405.000.
+- Prueba con 3 integrantes y descuento desactivado: total $450.000.
+- Compatibilidad de registro antiguo con 5 integrantes y campo ausente: descuento del 15 % aplicado correctamente.
+- `npm install` no pudo completarse porque el registro interno disponible respondió `404` para `firebase@11.10.0`; por ello no se generó `dist` en este entorno.

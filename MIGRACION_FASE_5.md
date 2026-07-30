@@ -100,3 +100,7 @@ No elimines `configuracion/seguridad` después de la activación.
 Esta versión agrega protección específica para `ajustesPrecio`. Después de publicar el frontend 5C.3, vuelve a publicar `firestore.rules` para que el ajuste manual de precios quede restringido realmente al rol Administrador.
 
 No requiere migrar documentos existentes: las asesorías antiguas sin `ajustesPrecio` continúan usando las tarifas generales.
+
+## Actualización Fase 5C.5
+
+No requiere migración manual de datos. El campo `aplicarDescuentoCantidad` se crea al guardar una asesoría nueva o editar una existente. La ausencia del campo se interpreta como `true` para conservar el descuento histórico. Deben publicarse las reglas de Firestore incluidas en esta versión.

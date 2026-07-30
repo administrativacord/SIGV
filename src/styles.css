@@ -480,3 +480,37 @@ button.calendar-cell:hover { transform: none; background: #f8fbff; }
   .integrante-price-row { align-items: flex-start; flex-wrap: wrap; }
   .price-editor input { max-width: none; width: 100%; }
 }
+
+
+/* Fase 5C.5 · Control de descuento por cantidad */
+.discount-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 10px 0 18px;
+  padding: 11px 13px;
+  border: 1px solid #dbe4ef;
+  border-radius: 13px;
+  background: #f8fafc;
+}
+.discount-control > div { display: grid; gap: 3px; }
+.discount-control strong { color: #0f172a; font-size: 13px; }
+.discount-control p { margin: 0; color: #64748b; font-size: 11px; line-height: 1.35; }
+.discount-control > small { grid-column: 1 / -1; color: #64748b; font-size: 10px; }
+.discount-control.inactive { background: #fff7ed; border-color: #fed7aa; }
+.discount-toggle {
+  min-width: 92px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  border: 1px solid transparent;
+}
+.discount-toggle.is-on { background: #dcfce7; color: #166534; border-color: #86efac; }
+.discount-toggle.is-off { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
+.discount-toggle:disabled { opacity: .72; cursor: not-allowed; }
+@media (max-width: 680px) {
+  .discount-control { grid-template-columns: 1fr; align-items: start; }
+  .discount-toggle { width: 100%; }
+}

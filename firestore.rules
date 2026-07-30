@@ -112,10 +112,27 @@ service cloud.firestore {
         );
     }
 
+    function noDiscountOverrideOnCreate() {
+      return !('aplicarDescuentoCantidad' in request.resource.data)
+        || request.resource.data.aplicarDescuentoCantidad == true;
+    }
+
+    function preservesDiscountSetting() {
+      return (
+          !('aplicarDescuentoCantidad' in resource.data)
+          && (!('aplicarDescuentoCantidad' in request.resource.data) || request.resource.data.aplicarDescuentoCantidad == true)
+        )
+        || (
+          ('aplicarDescuentoCantidad' in resource.data)
+          && ('aplicarDescuentoCantidad' in request.resource.data)
+          && request.resource.data.aplicarDescuentoCantidad == resource.data.aplicarDescuentoCantidad
+        );
+    }
+
     match /casos/{casoId} {
       allow read: if activeUser();
-      allow create: if activeAdmin() || (activeUser() && noPriceOverridesOnCreate());
-      allow update: if activeAdmin() || (activeUser() && preservesPriceOverrides());
+      allow create: if activeAdmin() || (activeUser() && noPriceOverridesOnCreate() && noDiscountOverrideOnCreate());
+      allow update: if activeAdmin() || (activeUser() && preservesPriceOverrides() && preservesDiscountSetting());
       allow delete: if activeAdmin();
     }
 
