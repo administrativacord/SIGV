@@ -104,3 +104,11 @@ No requiere migrar documentos existentes: las asesorías antiguas sin `ajustesPr
 ## Actualización Fase 5C.5
 
 No requiere migración manual de datos. El campo `aplicarDescuentoCantidad` se crea al guardar una asesoría nueva o editar una existente. La ausencia del campo se interpreta como `true` para conservar el descuento histórico. Deben publicarse las reglas de Firestore incluidas en esta versión.
+
+## Actualización Fase 5C.6
+
+No requiere migración manual. Cuando una asesoría se marca como facturada, la aplicación empieza a guardar automáticamente la fecha real, el valor facturado y la cantidad de visas facturadas dentro de `facturacion`. También se guardan `valorEstimado` y `cantidadVisasEstimadas` en el documento de la asesoría para estabilizar el histórico mensual.
+
+Las asesorías antiguas ya facturadas intentan recuperar su fecha desde el evento correspondiente del historial. Si no existe fecha ni evento identificable, SIGV no asigna el registro al mes actual: el Dashboard muestra una advertencia para evitar distorsionar el reporte.
+
+Esta versión no cambia `firestore.rules` respecto de Fase 5C.5.

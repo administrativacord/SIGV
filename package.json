@@ -1,6 +1,6 @@
 {
-  "name": "sigv-web-fase-5c5-control-descuento",
-  "version": "5.2.5",
+  "name": "sigv-web-fase-5c6-facturacion-mensual",
+  "version": "5.2.6",
   "private": true,
   "type": "module",
   "engines": {

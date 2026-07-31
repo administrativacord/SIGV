@@ -24,7 +24,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.5') errors.push(`La versión esperada es 5.2.5 y se encontró ${pkg.version}`);
+if (pkg.version !== '5.2.6') errors.push(`La versión esperada es 5.2.6 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -44,7 +44,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C.5 Web · Control de descuento",
+  "Fase 5C.6 Web · Facturación mensual",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -92,6 +92,24 @@ for (const expected of [
   'descuentoCantidadHabilitado={calc.aplicarDescuentoCantidad}',
   'Desactivado para esta asesoría',
   "activo ? 'Activado' : 'Desactivado'",
+  'function facturacionConFecha',
+  'fechaFacturacionIso',
+  'fechaFacturacionMs',
+  'valorFacturado',
+  'cantidadVisasFacturadas',
+  'valorEstimado',
+  'cantidadVisasEstimadas',
+  'function valorEstimadoCaso',
+  'function resumenFinancieroMes',
+  'function ResumenFacturacionMensual',
+  '>Facturación mensual AmCham<',
+  '>Valor estimado generado<',
+  '>Valor facturado<',
+  '>Pendiente actual por facturar<',
+  '>Generado y facturado en el mes<',
+  '>Proveniente de meses anteriores<',
+  'Ambos indicadores son independientes y no deben sumarse entre sí.',
+  'className="invoice-date-note"',
 ]) {
   if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
 }
@@ -116,6 +134,12 @@ for (const expected of [
   '.discount-control',
   '.discount-toggle.is-on',
   '.discount-toggle.is-off',
+  '.dashboard-operational-cards',
+  '.monthly-finance-panel',
+  '.monthly-finance-grid',
+  '.finance-metric-card',
+  '.finance-breakdown',
+  '.invoice-date-note',
 ]) {
   if (!styles.includes(expected)) errors.push(`Los estilos de Fase 5C no contienen: ${expected}`);
 }
@@ -133,4 +157,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C.5 aprobada.');
+console.log('Validación SIGV Fase 5C.6 aprobada.');

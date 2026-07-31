@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.5 Web · Control de descuento';
-const BUILD_ID = '2026-07-30-05C5';
+const APP_VERSION = 'Fase 5C.6 Web · Facturación mensual';
+const BUILD_ID = '2026-07-31-05C6';
 
 
 const rolesSigv = {
@@ -180,6 +180,10 @@ function crearFacturacion(tipoTramite = 'primeraVez') {
     tipoTramite,
     medioPago: '',
     estadoFactura: 'porFacturar',
+    fechaFacturacionIso: '',
+    fechaFacturacionMs: 0,
+    valorFacturado: 0,
+    cantidadVisasFacturadas: 0,
     valor: 0,
   };
 }
@@ -579,6 +583,174 @@ function describirCambioFacturacion(casoAnterior = {}, casoNuevo = {}) {
     : 'La asesoría fue marcada nuevamente como por facturar.';
 }
 
+function facturacionConFecha(facturacionNueva = {}, facturacionAnterior = {}, data = {}, config = configuracionBase, valorOverride = null, cantidadVisas = 1, ahora = new Date()) {
+  const normalizada = normalizarFacturacion(facturacionNueva, data, config, valorOverride);
+  const estadoAnterior = facturacionAnterior?.estadoFactura === 'facturada' ? 'facturada' : 'porFacturar';
+
+  if (normalizada.estadoFactura !== 'facturada') {
+    return {
+      ...normalizada,
+      fechaFacturacionIso: '',
+      fechaFacturacionMs: 0,
+      valorFacturado: 0,
+      cantidadVisasFacturadas: 0,
+    };
+  }
+
+  const fechaIsoExistente = String(facturacionAnterior?.fechaFacturacionIso || facturacionNueva?.fechaFacturacionIso || '');
+  const fechaMsExistente = Number(facturacionAnterior?.fechaFacturacionMs || facturacionNueva?.fechaFacturacionMs) || 0;
+  if (estadoAnterior === 'facturada') {
+    return {
+      ...normalizada,
+      // Los registros históricos que ya estaban facturados conservan su fecha original.
+      // Si no tenían fecha técnica, no se les asigna artificialmente la fecha de esta edición.
+      fechaFacturacionIso: fechaIsoExistente,
+      fechaFacturacionMs: fechaMsExistente,
+      valorFacturado: Number(facturacionAnterior?.valorFacturado) > 0
+        ? Number(facturacionAnterior.valorFacturado)
+        : Number(facturacionNueva?.valorFacturado) > 0
+          ? Number(facturacionNueva.valorFacturado)
+          : Number(valorOverride) || 0,
+      cantidadVisasFacturadas: Number(facturacionAnterior?.cantidadVisasFacturadas) > 0
+        ? Number(facturacionAnterior.cantidadVisasFacturadas)
+        : Number(facturacionNueva?.cantidadVisasFacturadas) > 0
+          ? Number(facturacionNueva.cantidadVisasFacturadas)
+          : Number(cantidadVisas) || 1,
+    };
+  }
+
+  return {
+    ...normalizada,
+    fechaFacturacionIso: ahora.toISOString(),
+    fechaFacturacionMs: ahora.getTime(),
+    valorFacturado: Number(valorOverride) || 0,
+    cantidadVisasFacturadas: Number(cantidadVisas) || 1,
+  };
+}
+
+function eventoFacturacionCaso(caso = {}) {
+  return [...(caso.historial || [])].reverse().find(item => {
+    const texto = normalizar(item.texto || '');
+    return texto.includes('fue marcada como facturada');
+  }) || null;
+}
+
+function claveFacturacionCaso(caso = {}) {
+  if (caso.facturacion?.estadoFactura !== 'facturada') return '';
+  const directa = claveFechaDesdeValor(caso.facturacion?.fechaFacturacionIso)
+    || claveFechaDesdeValor(caso.facturacion?.fechaFacturacionMs);
+  if (directa) return directa;
+  return claveFechaEvento(eventoFacturacionCaso(caso));
+}
+
+function completarFechaFacturacionHistorica(caso = {}, facturacion = {}) {
+  if (facturacion.estadoFactura !== 'facturada' || facturacion.fechaFacturacionIso || facturacion.fechaFacturacionMs) return facturacion;
+  const eventoHistorico = eventoFacturacionCaso(caso);
+  if (!eventoHistorico) return facturacion;
+  const fechaMs = Number(eventoHistorico.fechaMs) || marcaTiempoEvento(eventoHistorico) || 0;
+  const fechaIso = String(eventoHistorico.fechaIso || (fechaMs ? new Date(fechaMs).toISOString() : ''));
+  return { ...facturacion, fechaFacturacionIso: fechaIso, fechaFacturacionMs: fechaMs };
+}
+
+function fechaFacturacionLegible(facturacion = {}) {
+  const clave = claveFechaDesdeValor(facturacion.fechaFacturacionIso)
+    || claveFechaDesdeValor(facturacion.fechaFacturacionMs);
+  return clave ? fechaLargaDesdeClave(clave) : '';
+}
+
+function valorEstimadoCaso(caso = {}) {
+  const valorGuardado = Number(caso.valorEstimado);
+  return valorGuardado >= 0 && caso.valorEstimado !== undefined && caso.valorEstimado !== null
+    ? valorGuardado
+    : Number(caso.total) || 0;
+}
+
+function cantidadVisasEstimadasCaso(caso = {}) {
+  const cantidadGuardada = Number(caso.cantidadVisasEstimadas);
+  return cantidadGuardada > 0 ? cantidadGuardada : cantidadVisasCaso(caso);
+}
+
+function valorFacturadoCaso(caso = {}) {
+  const valorGuardado = Number(caso.facturacion?.valorFacturado);
+  return valorGuardado > 0 ? valorGuardado : Number(caso.total) || 0;
+}
+
+function cantidadVisasCaso(caso = {}) {
+  return normalizarIntegrantes(caso).length || Number(caso.cantidad) || 1;
+}
+
+function cantidadVisasFacturadasCaso(caso = {}) {
+  const cantidadGuardada = Number(caso.facturacion?.cantidadVisasFacturadas);
+  return cantidadGuardada > 0 ? cantidadGuardada : cantidadVisasCaso(caso);
+}
+
+function claveMesDesdeClaveFecha(claveFecha = '') {
+  return /^\d{4}-\d{2}-\d{2}$/.test(claveFecha) ? claveFecha.slice(0, 7) : '';
+}
+
+function resumenFinancieroMes(casos = [], year, month) {
+  const mesSeleccionado = claveMes(year, month);
+  const resumen = {
+    estimadoGenerado: 0,
+    facturadoTotal: 0,
+    facturadoMismoMes: 0,
+    facturadoMesesAnteriores: 0,
+    facturadoOrigenNoIdentificado: 0,
+    pendienteGenerado: 0,
+    visasGeneradas: 0,
+    visasFacturadas: 0,
+    visasPendientes: 0,
+    facturadasSinFecha: 0,
+  };
+
+  for (const caso of casos) {
+    const mesCreacion = claveMesDesdeClaveFecha(claveCreacionCaso(caso));
+    const cantidadVisas = cantidadVisasEstimadasCaso(caso);
+    const valorActual = valorEstimadoCaso(caso);
+    const esFacturada = caso.facturacion?.estadoFactura === 'facturada';
+
+    if (mesCreacion === mesSeleccionado) {
+      resumen.estimadoGenerado += valorActual;
+      resumen.visasGeneradas += cantidadVisas;
+      if (!esFacturada) {
+        resumen.pendienteGenerado += valorActual;
+        resumen.visasPendientes += cantidadVisas;
+      }
+    }
+
+    if (!esFacturada) continue;
+    const claveFactura = claveFacturacionCaso(caso);
+    const mesFactura = claveMesDesdeClaveFecha(claveFactura);
+    if (!mesFactura) {
+      resumen.facturadasSinFecha += 1;
+      continue;
+    }
+    if (mesFactura !== mesSeleccionado) continue;
+
+    const valorFacturado = valorFacturadoCaso(caso);
+    resumen.facturadoTotal += valorFacturado;
+    resumen.visasFacturadas += cantidadVisasFacturadasCaso(caso);
+
+    if (mesCreacion === mesSeleccionado) resumen.facturadoMismoMes += valorFacturado;
+    else if (mesCreacion && mesCreacion < mesSeleccionado) resumen.facturadoMesesAnteriores += valorFacturado;
+    else resumen.facturadoOrigenNoIdentificado += valorFacturado;
+  }
+
+  return resumen;
+}
+
+function etiquetaMes(year, month) {
+  return new Intl.DateTimeFormat('es-CO', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: ZONA_HORARIA_COLOMBIA,
+  }).format(new Date(Date.UTC(year, month - 1, 1, 12)));
+}
+
+function claveMes(year, month) {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
 function normalizar(texto = '') {
   return String(texto).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
@@ -738,6 +910,10 @@ function normalizarFacturacion(facturacion = {}, data = {}, config = configuraci
     tipoTramite,
     medioPago: facturacion.medioPago || '',
     estadoFactura: facturacion.estadoFactura === 'facturada' ? 'facturada' : 'porFacturar',
+    fechaFacturacionIso: facturacion.estadoFactura === 'facturada' ? String(facturacion.fechaFacturacionIso || '') : '',
+    fechaFacturacionMs: facturacion.estadoFactura === 'facturada' ? (Number(facturacion.fechaFacturacionMs) || 0) : 0,
+    valorFacturado: facturacion.estadoFactura === 'facturada' ? (Number(facturacion.valorFacturado) || 0) : 0,
+    cantidadVisasFacturadas: facturacion.estadoFactura === 'facturada' ? (Number(facturacion.cantidadVisasFacturadas) || 0) : 0,
     valor: valorCalculado || 0,
   };
 }
@@ -756,6 +932,9 @@ function generarTextoFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', 
     `Tipo de trámite: ${textoSolicitud(datos.tipoTramite)}`,
     `Medio de pago: ${datos.medioPago || 'Pendiente'}`,
     `Estado de facturación: ${datos.estadoFactura === 'facturada' ? 'Facturada' : 'Por facturar'}`,
+    ...(datos.estadoFactura === 'facturada' && (datos.fechaFacturacionIso || datos.fechaFacturacionMs)
+      ? [`Fecha de facturación: ${fechaColombia(new Date(datos.fechaFacturacionIso || datos.fechaFacturacionMs))}`]
+      : []),
     `Valor: ${valor === null || valor === undefined ? 'No aplica' : moneda(valor)}`,
   ];
   if (Number(cantidadIntegrantes) > 1) lineas.splice(1, 0, `Cantidad de integrantes: ${cantidadIntegrantes}`);
@@ -864,13 +1043,32 @@ function prepararCasoGuardado(caso, config = configuracionBase) {
   const integrantes = normalizarIntegrantes(caso);
   const calc = calcularCaso({
     integrantes,
+    ajustesPrecio: caso.ajustesPrecio,
+    aplicarDescuentoCantidad: descuentoCantidadActivo(caso),
     estadoManual: caso.estadoManual,
   }, configuracion);
   const principal = integrantes[0] || crearIntegrante(1);
+  const facturacionNormalizada = completarFechaFacturacionHistorica(
+    caso,
+    normalizarFacturacion(caso.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, configuracion, calc.totalPesos),
+  );
+  const valorEstimadoGuardado = caso.valorEstimado !== undefined && caso.valorEstimado !== null
+    ? Number(caso.valorEstimado) || 0
+    : Number(caso.total) || calc.totalPesos;
+  const cantidadVisasEstimadasGuardada = Number(caso.cantidadVisasEstimadas) > 0
+    ? Number(caso.cantidadVisasEstimadas)
+    : Number(caso.cantidad) || integrantes.length;
   return {
     ...caso,
     cantidad: integrantes.length,
     integrantes: integrantes.map(serializarIntegrante),
+    ajustesPrecio: normalizarAjustesPrecio(caso.ajustesPrecio),
+    aplicarDescuentoCantidad: descuentoCantidadActivo(caso),
+    subtotalAsesoria: calc.subtotalAsesoria,
+    porcentajeDescuento: calc.porcentajeDescuento,
+    valorDescuento: calc.valorDescuento,
+    valorEstimado: valorEstimadoGuardado,
+    cantidadVisasEstimadas: cantidadVisasEstimadasGuardada,
     asesor: caso.asesor || '',
     nombre: principal.nombre,
     telefono: principal.telefono,
@@ -885,7 +1083,7 @@ function prepararCasoGuardado(caso, config = configuracionBase) {
     total: calc.totalPesos,
     estado: calc.estado,
     documentos: `${calc.completos}/${calc.requeridos.length}`,
-    facturacion: normalizarFacturacion(caso.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, configuracion, calc.totalPesos),
+    facturacion: facturacionNormalizada,
     fechaCitaEmbajada: caso.fechaCitaEmbajada || '',
   };
 }
@@ -1192,6 +1390,8 @@ function App() {
       tipoSolicitud: textoSolicitud(principal.tipoSolicitud),
       fedex: principal.fedex,
       total: calculo.totalPesos,
+      valorEstimado: calculo.totalPesos,
+      cantidadVisasEstimadas: integrantes.length,
       subtotalAsesoria: calculo.subtotalAsesoria,
       porcentajeDescuento: calculo.porcentajeDescuento,
       valorDescuento: calculo.valorDescuento,
@@ -1202,7 +1402,7 @@ function App() {
       seguimiento: form.seguimiento || 'Asesoría creada. Pendiente seguimiento.',
       fechaAsesoria: form.fechaAsesoria,
       horaAsesoria: form.horaAsesoria,
-      facturacion: normalizarFacturacion(form.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calculo.totalPesos),
+      facturacion: facturacionConFecha(form.facturacion, {}, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calculo.totalPesos, integrantes.length),
       fechaCitaEmbajada: form.fechaCitaEmbajada,
       estadoManual: form.estadoManual,
       creadoPor,
@@ -1256,6 +1456,17 @@ function App() {
       estadoManual: casoActualizado.estadoManual,
     }, config);
     const actualizadoPor = usuarioAuth?.email || 'Sistema';
+    const casoAnteriorGuardado = casos.find(item => item.id === casoActualizado.id) || {};
+    const ahoraActualizacion = new Date();
+    const estabaFacturada = casoAnteriorGuardado.facturacion?.estadoFactura === 'facturada';
+    const seguiraFacturada = casoActualizado.facturacion?.estadoFactura === 'facturada';
+    const conservarEstimadoHistorico = estabaFacturada && seguiraFacturada;
+    const valorEstimado = conservarEstimadoHistorico
+      ? valorEstimadoCaso(casoAnteriorGuardado)
+      : calc.totalPesos;
+    const cantidadVisasEstimadas = conservarEstimadoHistorico
+      ? cantidadVisasEstimadasCaso(casoAnteriorGuardado)
+      : integrantes.length;
     const actualizado = {
       ...casoActualizado,
       cantidad: integrantes.length,
@@ -1272,12 +1483,14 @@ function App() {
       fedex: principal.fedex || '',
       documentosObj: { ...principal.documentos },
       total: calc.totalPesos,
+      valorEstimado,
+      cantidadVisasEstimadas,
       subtotalAsesoria: calc.subtotalAsesoria,
       porcentajeDescuento: calc.porcentajeDescuento,
       valorDescuento: calc.valorDescuento,
       estado: calc.estado,
       documentos: `${calc.completos}/${calc.requeridos.length}`,
-      facturacion: normalizarFacturacion(casoActualizado.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calc.totalPesos),
+      facturacion: facturacionConFecha(casoActualizado.facturacion, casoAnteriorGuardado.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calc.totalPesos, integrantes.length, ahoraActualizacion),
       fechaCitaEmbajada: casoActualizado.fechaCitaEmbajada || '',
       actualizadoPor,
       updatedAtMs: Date.now(),
@@ -1692,31 +1905,52 @@ function AccesoBloqueado({ perfil, onLogout }) {
 }
 
 function Dashboard({ casos, onOpen }) {
+  const hoy = partesFechaColombia(new Date());
+  const [mesVisible, setMesVisible] = useState({ year: hoy.year, month: hoy.month });
   const pendientes = casos.filter(c => c.estado.includes('Pendiente')).length;
   const listos = casos.filter(c => c.estado.includes('Pendiente Agendamiento')).length;
   const agendados = casos.filter(c => c.estado.includes('Asesoría Agendada')).length;
-  const facturado = casos.reduce((acc, c) => acc + (Number(c.total) || 0), 0);
   const visas = casos.reduce((acc, caso) => {
-    const cantidad = normalizarIntegrantes(caso).length || Number(caso.cantidad) || 1;
     const esFacturada = caso.facturacion?.estadoFactura === 'facturada';
+    const cantidad = esFacturada ? cantidadVisasFacturadasCaso(caso) : cantidadVisasCaso(caso);
     acc.total += cantidad;
     if (esFacturada) acc.facturadas += cantidad;
     else acc.porFacturar += cantidad;
     return acc;
   }, { total: 0, facturadas: 0, porFacturar: 0 });
   const recientes = casos.slice(0, 5);
+  const financiero = useMemo(
+    () => resumenFinancieroMes(casos, mesVisible.year, mesVisible.month),
+    [casos, mesVisible.year, mesVisible.month],
+  );
+
+  function cambiarMes(delta) {
+    const fecha = new Date(mesVisible.year, mesVisible.month - 1 + delta, 1);
+    setMesVisible({ year: fecha.getFullYear(), month: fecha.getMonth() + 1 });
+  }
+
+  function irMesActual() {
+    setMesVisible({ year: hoy.year, month: hoy.month });
+  }
 
   return <>
-    <section className="grid cards">
+    <section className="grid cards dashboard-operational-cards">
       <Card title="Asesorías registradas" value={casos.length} />
       <VisasCard total={visas.total} porFacturar={visas.porFacturar} facturadas={visas.facturadas} />
       <Card title="Pendientes" value={pendientes} />
       <Card title="Pendientes agendamiento" value={listos} />
       <Card title="Asesorías agendadas" value={agendados} />
-      <Card title="Facturación estimada AmCham" value={moneda(facturado)} />
     </section>
 
-    <CalendarioAsesorias casos={casos} onOpen={onOpen} />
+    <ResumenFacturacionMensual
+      resumen={financiero}
+      mesVisible={mesVisible}
+      onPrevious={() => cambiarMes(-1)}
+      onNext={() => cambiarMes(1)}
+      onToday={irMesActual}
+    />
+
+    <CalendarioAsesorias casos={casos} onOpen={onOpen} mesVisible={mesVisible} />
 
     <section className="panel mt">
       <div className="section-title">
@@ -1728,10 +1962,63 @@ function Dashboard({ casos, onOpen }) {
   </>;
 }
 
-function CalendarioAsesorias({ casos, onOpen }) {
+function ResumenFacturacionMensual({ resumen, mesVisible, onPrevious, onNext, onToday }) {
+  const tituloMes = etiquetaMes(mesVisible.year, mesVisible.month);
+  return <section className="panel mt monthly-finance-panel">
+    <div className="monthly-finance-header">
+      <div>
+        <h2>Facturación mensual AmCham</h2>
+        <p>Separa el valor generado por fecha de creación del valor facturado por la fecha real en que se marcó la asesoría como facturada.</p>
+      </div>
+      <div className="calendar-navigation">
+        <button type="button" className="calendar-nav-button" onClick={onPrevious} aria-label="Mes anterior">‹</button>
+        <strong>{tituloMes}</strong>
+        <button type="button" className="calendar-nav-button" onClick={onNext} aria-label="Mes siguiente">›</button>
+        <button type="button" className="secondary fit calendar-today" onClick={onToday}>Hoy</button>
+      </div>
+    </div>
+
+    <div className="monthly-finance-grid">
+      <article className="finance-metric-card">
+        <span>Valor estimado generado</span>
+        <strong>{moneda(resumen.estimadoGenerado)}</strong>
+        <small>{resumen.visasGeneradas} visa{resumen.visasGeneradas === 1 ? '' : 's'} creada{resumen.visasGeneradas === 1 ? '' : 's'} en {tituloMes}</small>
+      </article>
+
+      <article className="finance-metric-card featured">
+        <span>Valor facturado</span>
+        <strong>{moneda(resumen.facturadoTotal)}</strong>
+        <small>{resumen.visasFacturadas} visa{resumen.visasFacturadas === 1 ? '' : 's'} marcada{resumen.visasFacturadas === 1 ? '' : 's'} como facturada{resumen.visasFacturadas === 1 ? '' : 's'} en {tituloMes}</small>
+        <div className="finance-breakdown">
+          <div><span>Generado y facturado en el mes</span><b>{moneda(resumen.facturadoMismoMes)}</b></div>
+          <div><span>Proveniente de meses anteriores</span><b>{moneda(resumen.facturadoMesesAnteriores)}</b></div>
+          {resumen.facturadoOrigenNoIdentificado > 0 && <div><span>Origen sin fecha identificada</span><b>{moneda(resumen.facturadoOrigenNoIdentificado)}</b></div>}
+        </div>
+      </article>
+
+      <article className="finance-metric-card pending">
+        <span>Pendiente actual por facturar</span>
+        <strong>{moneda(resumen.pendienteGenerado)}</strong>
+        <small>{resumen.visasPendientes} visa{resumen.visasPendientes === 1 ? '' : 's'} creada{resumen.visasPendientes === 1 ? '' : 's'} en {tituloMes} que todavía no se ha{resumen.visasPendientes === 1 ? '' : 'n'} facturado</small>
+      </article>
+    </div>
+
+    <div className="monthly-finance-note">
+      <strong>Criterio del reporte:</strong> una asesoría creada en un mes cuenta en el valor estimado de ese mes. Cuando se factura posteriormente, cuenta en el valor facturado del mes en que se marcó como facturada. Ambos indicadores son independientes y no deben sumarse entre sí.
+    </div>
+    {resumen.facturadasSinFecha > 0 && <div className="monthly-finance-warning">
+      {resumen.facturadasSinFecha} asesoría{resumen.facturadasSinFecha === 1 ? '' : 's'} antigua{resumen.facturadasSinFecha === 1 ? '' : 's'} aparece{resumen.facturadasSinFecha === 1 ? '' : 'n'} como facturada{resumen.facturadasSinFecha === 1 ? '' : 's'}, pero no tiene{resumen.facturadasSinFecha === 1 ? '' : 'n'} fecha de facturación identificable y no se incluye{resumen.facturadasSinFecha === 1 ? '' : 'n'} en ningún mes.
+    </div>}
+  </section>;
+}
+
+function CalendarioAsesorias({ casos, onOpen, mesVisible }) {
   const hoy = partesFechaColombia(new Date());
-  const [mesVisible, setMesVisible] = useState({ year: hoy.year, month: hoy.month });
   const [diaSeleccionado, setDiaSeleccionado] = useState('');
+
+  useEffect(() => {
+    setDiaSeleccionado('');
+  }, [mesVisible.year, mesVisible.month]);
 
   const asesoriasPorDia = useMemo(() => {
     const mapa = new Map();
@@ -1770,22 +2057,7 @@ function CalendarioAsesorias({ casos, onOpen }) {
   });
   while (celdas.length % 7) celdas.push(null);
 
-  const tituloMes = new Intl.DateTimeFormat('es-CO', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: ZONA_HORARIA_COLOMBIA,
-  }).format(new Date(Date.UTC(mesVisible.year, mesVisible.month - 1, 15, 12)));
-
-  function cambiarMes(delta) {
-    const fecha = new Date(mesVisible.year, mesVisible.month - 1 + delta, 1);
-    setMesVisible({ year: fecha.getFullYear(), month: fecha.getMonth() + 1 });
-    setDiaSeleccionado('');
-  }
-
-  function irMesActual() {
-    setMesVisible({ year: hoy.year, month: hoy.month });
-    setDiaSeleccionado(hoy.clave);
-  }
+  const tituloMes = etiquetaMes(mesVisible.year, mesVisible.month);
 
   const creadasSeleccionadas = diaSeleccionado ? asesoriasPorDia.get(diaSeleccionado) || [] : [];
   const actividadSeleccionada = diaSeleccionado ? actividadPorDia.get(diaSeleccionado) || [] : [];
@@ -1794,13 +2066,7 @@ function CalendarioAsesorias({ casos, onOpen }) {
     <div className="calendar-header">
       <div>
         <h2>Calendario mensual de asesorías</h2>
-        <p>Cada día muestra únicamente la cantidad de asesorías creadas. Selecciona una fecha para consultar su actividad.</p>
-      </div>
-      <div className="calendar-navigation">
-        <button type="button" className="calendar-nav-button" onClick={() => cambiarMes(-1)} aria-label="Mes anterior">‹</button>
-        <strong>{tituloMes}</strong>
-        <button type="button" className="calendar-nav-button" onClick={() => cambiarMes(1)} aria-label="Mes siguiente">›</button>
-        <button type="button" className="secondary fit calendar-today" onClick={irMesActual}>Hoy</button>
+        <p>{tituloMes}. Cada día muestra únicamente la cantidad de asesorías creadas. Selecciona una fecha para consultar su actividad.</p>
       </div>
     </div>
 
@@ -2552,6 +2818,14 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
         <input readOnly value={valor === null ? 'No aplica' : moneda(valor)} />
       </label>
     </div>
+    {facturacion.estadoFactura === 'facturada' && <div className="invoice-date-note">
+      <strong>Registro de facturación</strong>
+      <span>
+        {fechaFacturacionLegible(facturacion) || 'La fecha se registrará automáticamente al guardar.'}
+        {' · '}{moneda(Number(facturacion.valorFacturado) > 0 ? facturacion.valorFacturado : valor)}
+        {' · '}{Number(facturacion.cantidadVisasFacturadas) > 0 ? facturacion.cantidadVisasFacturadas : cantidadIntegrantes} visa{(Number(facturacion.cantidadVisasFacturadas) > 0 ? Number(facturacion.cantidadVisasFacturadas) : Number(cantidadIntegrantes)) === 1 ? '' : 's'}
+      </span>
+    </div>}
   </div>;
 }
 
@@ -2616,7 +2890,9 @@ function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, 
       <Line label="Tipo de trámite" value={textoSolicitud(facturacionNormalizada.tipoTramite)} />
       <Line label="Medio de pago" value={facturacionNormalizada.medioPago || 'Pendiente'} />
       <Line label="Facturación" value={facturacionNormalizada.estadoFactura === 'facturada' ? 'Facturada' : 'Por facturar'} />
-      <Line label="Valor" value={facturacionNormalizada.valor ? moneda(facturacionNormalizada.valor) : 'No aplica'} />
+      {facturacionNormalizada.estadoFactura === 'facturada' && <Line label="Fecha facturación" value={fechaFacturacionLegible(facturacionNormalizada) || 'Pendiente de guardar'} />}
+      <Line label="Valor actual" value={facturacionNormalizada.valor ? moneda(facturacionNormalizada.valor) : 'No aplica'} />
+      {facturacionNormalizada.estadoFactura === 'facturada' && <Line label="Valor facturado registrado" value={moneda(Number(facturacionNormalizada.valorFacturado) > 0 ? facturacionNormalizada.valorFacturado : facturacionNormalizada.valor)} />}
     </div>}
     {fechaCitaEmbajada && <p className="hint"><strong>Fecha Cita embajada:</strong> {fechaCitaEmbajada}</p>}
   </section>;
