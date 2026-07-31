@@ -1,38 +1,37 @@
-# Validación final — Fase 5C.10
-
-## Diagnóstico confirmado
-
-- Primer reporte: 60 visas facturadas acumuladas y 42 asignadas a julio.
-- Segundo reporte, después de nuevas asesorías: 72 acumuladas y 54 asignadas a julio.
-- La diferencia permaneció en 18 visas.
-- Esto demuestra que las 12 visas nuevas entraron correctamente y que el problema estaba concentrado en 18 visas históricas.
+# Validación final — Fase 5C.11
 
 ## Funcionalidad validada
 
-- Detecta registros históricos creados en julio que siguen fuera del periodo `2026-07`.
-- Detecta cantidades históricas congeladas que no coinciden con los integrantes actuales.
-- Fuerza `1 de julio de 2026` y el periodo `2026-07` únicamente para los registros históricos candidatos.
-- Actualiza la cantidad facturada con la cantidad real de integrantes durante la reconciliación.
-- Añade una marca de reconciliación y un evento en el historial.
-- Conserva las facturaciones automáticas reales de meses posteriores.
-- La operación es idempotente una vez que fecha, periodo, cantidad y auditoría quedan completos.
-- Estado de la app informa el resultado de la reconciliación.
+- Filtro de asesorías por todas las fechas.
+- Selección de mes completo mediante `input type="month"`.
+- Selección de rango mediante fecha inicial y fecha final.
+- Validación de rango invertido.
+- Combinación del periodo con búsqueda, estado y tipo de solicitud.
+- El contador y la tabla utilizan el mismo arreglo filtrado.
+- La exportación usa exactamente ese arreglo visible.
+- Libro Excel con hojas **Asesorías** y **Visas**.
+- Una fila por expediente en Asesorías y una fila por integrante en Visas.
+- Formato de moneda, encabezado fijo, anchos de columna y autofiltros.
+- Generación `.xlsx` sin dependencias npm adicionales.
 
-## Pruebas ejecutadas
+## Pruebas técnicas
 
 - `npm run check`: aprobado.
-- Transpilación de `src/main.jsx` mediante parser JSX de TypeScript: aprobada.
-- Simulación de 18 visas históricas fuera de julio: aprobada.
-- Exclusión de una facturación real de agosto: aprobada.
-- Versiones de dependencias exactas: aprobadas.
-- ZIP sin `node_modules`, `dist` ni `package-lock.json`: aprobado.
+- Transpilación de `src/main.jsx` con TypeScript en modo JSX React: aprobada.
+- `node --check src/xlsxExport.js`: aprobado.
+- Archivo `.xlsx` de prueba generado con el módulo interno: aprobado.
+- Integridad ZIP del Excel de prueba: aprobada.
+- Estructura OOXML y dos hojas verificadas: aprobada.
+- Dependencias con versiones exactas: aprobado.
+- ZIP del proyecto sin `node_modules`, `dist` ni `package-lock.json`: aprobado.
 
-## Seguridad
+## Base de datos y seguridad
 
-- Se conservan las reglas de Firestore de la versión 2.9.9.
-- La reconciliación solo se ejecuta para Administradores.
-- Los registros nuevos con fecha automática real no son desplazados a julio.
+- No se agregan campos ni colecciones.
+- No requiere migración de Firestore.
+- `firestore.rules`, `firebase.js` y `firestoreRest.js` permanecen funcionalmente sin cambios.
+- La exportación se realiza localmente en el navegador con los datos que el usuario ya tiene permiso de consultar.
 
 ## Limitación del entorno
 
-La compilación completa requiere ejecutar `npm install --package-lock=false` y `npm run build` en un entorno con acceso estable al registro público de npm.
+La compilación final de Vite requiere ejecutar `npm install --package-lock=false` y `npm run build` en un entorno con acceso al registro público de npm.

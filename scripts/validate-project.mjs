@@ -11,6 +11,7 @@ const required = [
   'src/firebase.js',
   'src/firestoreRest.js',
   'src/styles.css',
+  'src/xlsxExport.js',
   'MIGRACION_FASE_5.md',
   'VALIDACION_FINAL.md',
 ];
@@ -24,7 +25,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.10') errors.push(`La versión esperada es 5.2.10 y se encontró ${pkg.version}`);
+if (pkg.version !== '5.2.11') errors.push(`La versión esperada es 5.2.11 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -44,7 +45,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C.10 Web · Reconciliación de visas facturadas julio",
+  "Fase 5C.11 Web · Filtros por fecha y exportación Excel",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -132,6 +133,16 @@ for (const expected of [
   'facturadoPor',
   'fechaFacturacionInferida',
   'Corrección inicial de facturación',
+  'function construirHojasExportacion',
+  'function nombreArchivoExportacion',
+  'Calendario y periodo de consulta',
+  'Mes completo',
+  'Rango de fechas',
+  '↓ Exportar Excel',
+  'type="month"',
+  'descargarLibroXlsx',
+  "nombre: 'Asesorías'",
+  "nombre: 'Visas'",
 ]) {
   if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
 }
@@ -162,6 +173,12 @@ for (const expected of [
   '.finance-metric-card',
   '.finance-breakdown',
   '.invoice-date-note',
+  '.case-date-filter',
+  '.case-date-filter-header',
+  '.excel-export-button',
+  '.date-filter-modes',
+  '.date-filter-fields',
+  '.date-filter-summary',
 ]) {
   if (!styles.includes(expected)) errors.push(`Los estilos de Fase 5C no contienen: ${expected}`);
 }
@@ -173,10 +190,15 @@ if (processColumnCount !== 2) errors.push(`Se esperaba una sola columna de proce
 if (styles.includes('minmax(390px, 1.18fr) minmax(340px, 1fr) minmax(300px, .84fr)')) errors.push('Persistió la cuadrícula anterior de tres columnas');
 if (main.includes('>3. Datos del cliente<') || main.includes('>4. Tipo de solicitud<')) errors.push('Persistieron los pasos separados de datos y solicitud');
 
+const xlsx = readFileSync(resolve(root, 'src/xlsxExport.js'), 'utf8');
+for (const expected of ['crearArchivoXlsx', 'descargarLibroXlsx', '[Content_Types].xml', 'xl/workbook.xml', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']) {
+  if (!xlsx.includes(expected)) errors.push(`El exportador Excel no contiene: ${expected}`);
+}
+
 if (errors.length) {
   console.error('Validación SIGV fallida:');
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C.10 aprobada.');
+console.log('Validación SIGV Fase 5C.11 aprobada.');

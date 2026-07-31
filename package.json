@@ -1,6 +1,6 @@
 {
-  "name": "sigv-web-fase-5c10-reconciliacion-visas-julio",
-  "version": "5.2.10",
+  "name": "sigv-web-fase-5c11-filtros-fecha-exportacion-excel",
+  "version": "5.2.11",
   "private": true,
   "type": "module",
   "engines": {

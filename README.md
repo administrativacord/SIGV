@@ -1,49 +1,44 @@
-# SIGV Web — Fase 5C.10 · Reconciliación de visas facturadas de julio
+# SIGV Web — Fase 5C.11 · Filtros por fecha y exportación Excel
 
-Base oficial: `2.9.9_SIGV_Web_Fase_5C9_Migracion_Facturacion_Julio.zip`.
+Base oficial: `2.9.10_SIGV_Web_Fase_5C10_Reconciliacion_Visas_Julio.zip`.
 
-- Versión interna: `5.2.10`
-- Build: `2026-07-31-05C10`
+- Versión interna: `5.2.11`
+- Build: `2026-07-31-05C11`
 
-## Motivo del ajuste
+## Cambios en el menú Asesorías
 
-Después de continuar registrando asesorías, el Dashboard pasó de mostrar `60 facturadas / 42 en julio` a `72 facturadas / 54 en julio`. La diferencia permaneció exactamente en 18 visas. Esto confirmó que las asesorías nuevas sí estaban entrando correctamente al reporte mensual y que el problema correspondía a un bloque histórico fijo de 18 visas.
+Se incorporó un panel de **Calendario y periodo de consulta** que filtra las asesorías por su fecha de creación.
 
-La Fase 5C.9 podía detectar registros antiguos, pero en algunos casos conservaba un periodo contable anterior o no reconocido y también podía conservar una cantidad histórica menor. Por eso esos registros seguían dentro del acumulado general, pero no completaban el total mensual de julio.
+Modos disponibles:
 
-## Reconciliación automática reforzada
+- **Todas:** conserva el listado completo.
+- **Mes completo:** permite seleccionar cualquier mes mediante el control mensual del navegador.
+- **Rango de fechas:** permite indicar una fecha inicial, una fecha final o un rango abierto por uno de sus extremos.
 
-Al ingresar con un Administrador, SIGV revisa únicamente asesorías históricas que:
+El periodo se combina con los filtros existentes de búsqueda, estado del proceso y tipo de solicitud. La tabla siempre muestra el resultado conjunto de todos los criterios seleccionados.
 
-- estén marcadas como Facturadas;
-- hayan sido creadas en julio de 2026;
-- no correspondan a una facturación automática real registrada por las versiones nuevas; y
-- estén fuera de julio, tengan auditoría incompleta o una cantidad facturada distinta de sus integrantes actuales.
+## Exportación a Excel
 
-Para esos registros:
+El botón **Exportar Excel** genera un archivo `.xlsx` válido con exactamente las asesorías visibles en pantalla. No requiere instalar una librería adicional en el navegador ni agregar nuevas dependencias npm.
 
-- asigna `1 de julio de 2026`;
-- fuerza el periodo contable `2026-07`;
-- actualiza la cantidad de visas facturadas con la cantidad real de integrantes;
-- conserva o congela el valor facturado;
-- añade una anotación al historial;
-- guarda `facturacion.migracionJulio2026Completada: true`.
+El libro contiene dos hojas:
 
-Las facturaciones nuevas registradas correctamente no se modifican. Por ejemplo, una asesoría creada en julio y facturada realmente en agosto conserva agosto como su periodo de facturación.
+1. **Asesorías:** una fila por expediente, con fecha de creación, asesor, integrantes, cantidad de visas, estado, datos de facturación, subtotal, descuento, total estimado y valor facturado.
+2. **Visas:** una fila por integrante, con sus datos, tipo de cliente, tipo de solicitud, tarifa, precio personalizado, descuento y valor individual estimado.
 
-## Resultado esperado
+Los encabezados quedan congelados, las columnas tienen anchos legibles, los importes conservan formato monetario y ambas hojas incluyen autofiltro de Excel.
 
-Con los datos reportados al momento del ajuste, después de que un Administrador ejecute la reconciliación, julio debería pasar de:
+## Criterio de fecha
 
-- Acumulado general facturado: 72 visas
-- Facturado en julio: 54 visas
+El filtro utiliza `createdAtIso` o `createdAtMs`. Para registros históricos utiliza como respaldo el evento de creación del historial. Las asesorías sin una fecha de creación identificable no se incluyen cuando se selecciona un mes o rango, pero sí permanecen disponibles en el modo **Todas**.
 
-A:
+## Compatibilidad
 
-- Acumulado general facturado: 72 visas
-- Facturado en julio: 72 visas
-
-El resultado exacto puede aumentar si se registran o facturan nuevas asesorías antes de publicar, pero la diferencia histórica fija de 18 debe desaparecer.
+- No modifica Firestore ni requiere migración de datos.
+- No modifica `firestore.rules`.
+- Conserva la reconciliación de facturación de julio de la Fase 5C.10.
+- Conserva seguridad, roles, calendario del Dashboard, facturación mensual, descuentos, precios personalizados y afiliación grupal.
+- El ZIP no incluye `node_modules`, `dist` ni `package-lock.json`.
 
 ## Publicación
 
@@ -53,13 +48,4 @@ npm run check
 npm run build
 ```
 
-Publica el frontend y luego:
-
-1. Cierra sesión y vuelve a ingresar con una cuenta Administrador, o recarga completamente la aplicación.
-2. Abre **Estado de la app**.
-3. Confirma el mensaje de reconciliación y la cantidad de visas ajustadas.
-4. Regresa al Dashboard y revisa julio de 2026.
-
-Las reglas de Firestore son las mismas de la versión 2.9.9. Si ya las publicaste, no es obligatorio volver a desplegarlas para este hotfix.
-
-El ZIP no incluye `node_modules`, `dist` ni `package-lock.json`.
+Para esta actualización no es necesario volver a publicar las reglas de Firestore si ya se publicaron las de la versión anterior.

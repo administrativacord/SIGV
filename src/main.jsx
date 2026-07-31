@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { descargarLibroXlsx } from './xlsxExport';
 import { auth } from './firebase';
 import {
   onAuthStateChanged,
@@ -17,8 +18,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.10 Web · Reconciliación de visas facturadas julio';
-const BUILD_ID = '2026-07-31-05C10';
+const APP_VERSION = 'Fase 5C.11 Web · Filtros por fecha y exportación Excel';
+const BUILD_ID = '2026-07-31-05C11';
 const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
 const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
 const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
@@ -1965,7 +1966,7 @@ function App() {
 
       {!cargando && vista === 'nuevoCaso' && permisos.puedeCrearCasos && <NuevoCaso form={form} setForm={setForm} calculo={calculo} guardarCaso={guardarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
-      {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} />}
+      {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} config={config} />}
 
       {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => navegarA('casos')} onSave={actualizarCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
@@ -2633,23 +2634,217 @@ function IntegrantesSecciones({ integrantes, onChange, config, ajustesPrecio = {
   </>;
 }
 
-function Casos({ casos, onOpen }) {
+function etiquetaSolicitudExportacion(tipo = '') {
+  return tiposSolicitud.find(item => item.id === tipo)?.label || textoSolicitud(tipo);
+}
+
+function nombreArchivoExportacion(modoFecha, mesFiltro, fechaDesde, fechaHasta) {
+  const hoy = partesFechaColombia(new Date()).clave;
+  const periodo = modoFecha === 'mes'
+    ? mesFiltro
+    : modoFecha === 'rango'
+      ? `${fechaDesde || 'inicio'}_a_${fechaHasta || 'fin'}`
+      : 'todas_las_fechas';
+  return `SIGV_Asesorias_${periodo}_${hoy}.xlsx`.replace(/[^a-zA-Z0-9_.-]/g, '_');
+}
+
+function construirHojasExportacion(casos = [], config = configuracionBase) {
+  const filasAsesorias = [];
+  const filasVisas = [];
+
+  for (const caso of casos) {
+    const integrantes = normalizarIntegrantes(caso);
+    const calculo = calcularCaso(caso, config);
+    const facturada = caso.facturacion?.estadoFactura === 'facturada';
+    const fechaCreacion = claveCreacionCaso(caso);
+    const fechaFacturacion = claveFacturacionCaso(caso);
+    const principal = integrantes[0] || crearIntegrante(1);
+    const nombresIntegrantes = integrantes.map(item => item.nombre || 'Sin nombre').join(' | ');
+    const solicitudes = integrantes.map(item => etiquetaSolicitudExportacion(item.tipoSolicitud)).join(' | ');
+    const tiposCliente = [...new Set(integrantes.map(item => normalizarConfiguracion(config).tarifas[item.tipoCliente]?.label || item.tipoCliente))].join(' | ');
+
+    filasAsesorias.push([
+      caso.id || '',
+      fechaCreacion,
+      caso.asesor || '',
+      textoClienteCaso(caso),
+      principal.telefono || caso.telefono || '',
+      principal.email || caso.email || '',
+      integrantes.length,
+      nombresIntegrantes,
+      solicitudes,
+      tiposCliente,
+      caso.estado || calculo.estado || '',
+      caso.documentos || '',
+      facturada ? 'Facturada' : 'Por facturar',
+      fechaFacturacion,
+      caso.facturacion?.nombre || '',
+      caso.facturacion?.cedulaNit || '',
+      caso.facturacion?.nombreEmpresaAfiliada || '',
+      caso.facturacion?.ciudad || '',
+      caso.facturacion?.medioPago || '',
+      Number(calculo.subtotalAsesoria) || 0,
+      Number(calculo.valorDescuento) || 0,
+      Number(calculo.totalPesos) || 0,
+      facturada ? valorFacturadoCaso(caso) : 0,
+    ]);
+
+    let descuentoAsignado = 0;
+    calculo.detalleIntegrantes.forEach((detalle, indice) => {
+      const tarifa = Number(detalle.tarifa) || 0;
+      const esUltimo = indice === calculo.detalleIntegrantes.length - 1;
+      const descuentoIndividual = esUltimo
+        ? Math.max(0, Number(calculo.valorDescuento) - descuentoAsignado)
+        : Math.max(0, Math.round(tarifa * calculo.porcentajeDescuento));
+      descuentoAsignado += descuentoIndividual;
+      const valorFinal = Math.max(0, tarifa - descuentoIndividual);
+      filasVisas.push([
+        caso.id || '',
+        fechaCreacion,
+        caso.asesor || '',
+        indice + 1,
+        detalle.nombre || `Integrante ${indice + 1}`,
+        detalle.telefono || '',
+        detalle.email || '',
+        normalizarConfiguracion(config).tarifas[detalle.tipoCliente]?.label || detalle.tipoCliente,
+        etiquetaSolicitudExportacion(detalle.tipoSolicitud),
+        Number(detalle.tarifaConfigurada) || 0,
+        detalle.precioPersonalizado ? 'Sí' : 'No',
+        tarifa,
+        Math.round((Number(calculo.porcentajeDescuento) || 0) * 100),
+        descuentoIndividual,
+        valorFinal,
+        facturada ? 'Facturada' : 'Por facturar',
+        fechaFacturacion,
+        caso.facturacion?.nombreEmpresaAfiliada || '',
+        caso.facturacion?.ciudad || '',
+        caso.estado || calculo.estado || '',
+      ]);
+    });
+  }
+
+  return [
+    {
+      nombre: 'Asesorías',
+      encabezados: [
+        'ID', 'Fecha de creación', 'Asesor responsable', 'Cliente principal', 'Teléfono principal', 'Email principal',
+        'Cantidad de visas', 'Integrantes', 'Tipos de solicitud', 'Tipo de cliente / paquete', 'Estado del proceso',
+        'Documentos', 'Estado de facturación', 'Fecha de facturación', 'Nombre de facturación', 'Cédula / NIT',
+        'Empresa afiliada', 'Ciudad', 'Medio de pago', 'Subtotal', 'Descuento', 'Total estimado', 'Valor facturado',
+      ],
+      filas: filasAsesorias,
+      anchos: [14, 15, 20, 25, 17, 25, 14, 36, 28, 24, 28, 22, 18, 17, 24, 18, 28, 18, 18, 16, 16, 16, 16],
+      columnasMoneda: [19, 20, 21, 22],
+      columnasEntero: [6],
+    },
+    {
+      nombre: 'Visas',
+      encabezados: [
+        'ID asesoría', 'Fecha de creación', 'Asesor responsable', 'N.º de visa', 'Nombre del integrante', 'Teléfono',
+        'Email', 'Tipo de cliente / paquete', 'Tipo de solicitud', 'Tarifa configurada', 'Precio personalizado',
+        'Precio base aplicado', 'Descuento (%)', 'Descuento individual', 'Valor final estimado',
+        'Estado de facturación', 'Fecha de facturación', 'Empresa afiliada', 'Ciudad', 'Estado del proceso',
+      ],
+      filas: filasVisas,
+      anchos: [14, 15, 20, 12, 28, 17, 25, 25, 20, 17, 18, 18, 15, 18, 18, 18, 17, 28, 18, 28],
+      columnasMoneda: [9, 11, 13, 14],
+      columnasEntero: [3, 12],
+    },
+  ];
+}
+
+function Casos({ casos, onOpen, config = configuracionBase }) {
+  const hoy = partesFechaColombia(new Date());
   const [busqueda, setBusqueda] = useState('');
   const [estado, setEstado] = useState('todos');
   const [solicitud, setSolicitud] = useState('todos');
+  const [modoFecha, setModoFecha] = useState('todos');
+  const [mesFiltro, setMesFiltro] = useState(claveMes(hoy.year, hoy.month));
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
+
+  const rangoInvalido = modoFecha === 'rango' && fechaDesde && fechaHasta && fechaDesde > fechaHasta;
+  const mesInvalido = modoFecha === 'mes' && !/^\d{4}-\d{2}$/.test(mesFiltro);
+  const filtroFechaInvalido = rangoInvalido || mesInvalido;
 
   const filtrados = useMemo(() => {
+    if (filtroFechaInvalido) return [];
     const q = normalizar(busqueda);
     return casos.filter(c => {
       const coincideTexto = !q || normalizar(`${c.id} ${c.asesor} ${c.nombre} ${c.telefono} ${c.email} ${normalizarIntegrantes(c).map(i => `${i.nombre} ${i.telefono} ${i.email}`).join(' ')}`).includes(q);
       const coincideEstado = estado === 'todos' || normalizar(c.estado).includes(normalizar(estado));
       const coincideSolicitud = solicitud === 'todos' || normalizarIntegrantes(c).some(i => i.tipoSolicitud === solicitud);
-      return coincideTexto && coincideEstado && coincideSolicitud;
+      const fechaCreacion = claveCreacionCaso(c);
+      const coincideFecha = modoFecha === 'todos'
+        || (modoFecha === 'mes' && !!fechaCreacion && fechaCreacion.startsWith(mesFiltro))
+        || (modoFecha === 'rango' && !!fechaCreacion && (!fechaDesde || fechaCreacion >= fechaDesde) && (!fechaHasta || fechaCreacion <= fechaHasta));
+      return coincideTexto && coincideEstado && coincideSolicitud && coincideFecha;
     });
-  }, [busqueda, estado, solicitud, casos]);
+  }, [busqueda, estado, solicitud, modoFecha, mesFiltro, fechaDesde, fechaHasta, filtroFechaInvalido, casos]);
 
-  return <section className="panel">
-    <div className="toolbar">
+  const descripcionFecha = modoFecha === 'mes'
+    ? (mesInvalido ? 'Selecciona un mes válido' : `Mes completo: ${etiquetaMes(Number(mesFiltro.slice(0, 4)), Number(mesFiltro.slice(5, 7)))}`)
+    : modoFecha === 'rango'
+      ? `Rango: ${fechaDesde || 'inicio'} a ${fechaHasta || 'fin'}`
+      : 'Todas las fechas de creación';
+
+  function exportarExcel() {
+    if (!filtrados.length || filtroFechaInvalido) return;
+    try {
+      descargarLibroXlsx({
+        nombreArchivo: nombreArchivoExportacion(modoFecha, mesFiltro, fechaDesde, fechaHasta),
+        hojas: construirHojasExportacion(filtrados, config),
+      });
+    } catch (error) {
+      console.error('Error exportando Excel:', error);
+      alert(`No se pudo generar el archivo de Excel. ${error.message || ''}`);
+    }
+  }
+
+  return <section className="panel cases-page-panel">
+    <div className="case-date-filter">
+      <div className="case-date-filter-header">
+        <div>
+          <h2>Calendario y periodo de consulta</h2>
+          <p>Selecciona asesorías por su fecha de creación. La exportación incluye exactamente los registros visibles.</p>
+        </div>
+        <button type="button" className="excel-export-button" onClick={exportarExcel} disabled={!filtrados.length || filtroFechaInvalido}>
+          ↓ Exportar Excel ({filtrados.length})
+        </button>
+      </div>
+
+      <div className="date-filter-modes" role="group" aria-label="Tipo de filtro de fecha">
+        <button type="button" className={modoFecha === 'todos' ? 'active' : ''} onClick={() => setModoFecha('todos')}>Todas</button>
+        <button type="button" className={modoFecha === 'mes' ? 'active' : ''} onClick={() => setModoFecha('mes')}>Mes completo</button>
+        <button type="button" className={modoFecha === 'rango' ? 'active' : ''} onClick={() => setModoFecha('rango')}>Rango de fechas</button>
+      </div>
+
+      {modoFecha === 'mes' && <div className="date-filter-fields month-mode">
+        <label>Mes a consultar
+          <input type="month" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} />
+        </label>
+        <button type="button" className="secondary fit date-quick-button" onClick={() => setMesFiltro(claveMes(hoy.year, hoy.month))}>Mes actual</button>
+      </div>}
+
+      {modoFecha === 'rango' && <div className="date-filter-fields">
+        <label>Fecha inicial
+          <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} />
+        </label>
+        <label>Fecha final
+          <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} />
+        </label>
+        <button type="button" className="secondary fit date-quick-button" onClick={() => { setFechaDesde(''); setFechaHasta(''); }}>Limpiar rango</button>
+      </div>}
+
+      <div className="date-filter-summary">
+        <strong>{descripcionFecha}</strong>
+        <span>El archivo contiene una hoja de asesorías y otra de visas por integrante.</span>
+      </div>
+      {rangoInvalido && <div className="alert-box">La fecha inicial no puede ser posterior a la fecha final.</div>}
+      {mesInvalido && <div className="alert-box">Selecciona un mes válido para consultar.</div>}
+    </div>
+
+    <div className="toolbar cases-toolbar">
       <label>Buscar asesoría
         <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="ID, cliente, teléfono, asesor o email" />
       </label>
@@ -2666,7 +2861,7 @@ function Casos({ casos, onOpen }) {
         </select>
       </label>
     </div>
-    <p className="hint">Mostrando {filtrados.length} de {casos.length} asesorías registradas.</p>
+    <p className="hint">Mostrando {filtrados.length} de {casos.length} asesorías registradas. Filtro de fecha: {descripcionFecha.toLowerCase()}.</p>
     <CaseTable casos={filtrados} onOpen={onOpen} />
   </section>;
 }
