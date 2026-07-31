@@ -1,35 +1,38 @@
-# Validación final — Fase 5C.9
+# Validación final — Fase 5C.10
+
+## Diagnóstico confirmado
+
+- Primer reporte: 60 visas facturadas acumuladas y 42 asignadas a julio.
+- Segundo reporte, después de nuevas asesorías: 72 acumuladas y 54 asignadas a julio.
+- La diferencia permaneció en 18 visas.
+- Esto demuestra que las 12 visas nuevas entraron correctamente y que el problema estaba concentrado en 18 visas históricas.
 
 ## Funcionalidad validada
 
-- Las facturadas antiguas sin fecha reciben `1 de julio de 2026`.
-- La fecha corresponde a medianoche de Colombia: `2026-07-01T05:00:00.000Z`.
-- El periodo contable queda como `2026-07`.
-- Se congelan el valor y la cantidad de visas facturadas.
-- Los registros con fecha histórica conservan esa fecha y solo completan su auditoría técnica.
-- La migración es idempotente: los registros completos no vuelven a modificarse.
-- El Dashboard mensual incluye las visas migradas dentro de julio de 2026.
-- Las facturaciones nuevas registran fecha, periodo, usuario, valor y cantidad en la misma operación.
-- Estado de la app muestra el resultado de la corrección.
-- Total de visas se identifica como acumulado general.
-- Se conservaron afiliación grupal, empresa afiliada, descuentos, precios manuales, calendario y diseño de dos columnas.
-
-## Seguridad validada
-
-- Las reglas exigen auditoría completa al crear o marcar una asesoría como Facturada.
-- Los Asesores no pueden cambiar los datos históricos de una asesoría que permanece Facturada.
-- Los Administradores pueden ejecutar la migración y correcciones controladas.
+- Detecta registros históricos creados en julio que siguen fuera del periodo `2026-07`.
+- Detecta cantidades históricas congeladas que no coinciden con los integrantes actuales.
+- Fuerza `1 de julio de 2026` y el periodo `2026-07` únicamente para los registros históricos candidatos.
+- Actualiza la cantidad facturada con la cantidad real de integrantes durante la reconciliación.
+- Añade una marca de reconciliación y un evento en el historial.
+- Conserva las facturaciones automáticas reales de meses posteriores.
+- La operación es idempotente una vez que fecha, periodo, cantidad y auditoría quedan completos.
+- Estado de la app informa el resultado de la reconciliación.
 
 ## Pruebas ejecutadas
 
 - `npm run check`: aprobado.
-- Transpilación de `src/main.jsx` con parser JSX de TypeScript: aprobada.
-- Caso simulado de 5 visas antiguas sin fecha: aprobado.
-- Registro nuevo facturado en agosto con periodo `2026-08`: aprobado.
-- Reporte de julio con valor y visas migradas: aprobado.
-- Versiones de dependencias exactas: aprobado.
+- Transpilación de `src/main.jsx` mediante parser JSX de TypeScript: aprobada.
+- Simulación de 18 visas históricas fuera de julio: aprobada.
+- Exclusión de una facturación real de agosto: aprobada.
+- Versiones de dependencias exactas: aprobadas.
 - ZIP sin `node_modules`, `dist` ni `package-lock.json`: aprobado.
+
+## Seguridad
+
+- Se conservan las reglas de Firestore de la versión 2.9.9.
+- La reconciliación solo se ejecuta para Administradores.
+- Los registros nuevos con fecha automática real no son desplazados a julio.
 
 ## Limitación del entorno
 
-`npm install --package-lock=false --registry=https://registry.npmjs.org` no terminó dentro del tiempo disponible. Antes de publicar debe ejecutarse la instalación y `npm run build` en un entorno con acceso estable al registro público de npm.
+La compilación completa requiere ejecutar `npm install --package-lock=false` y `npm run build` en un entorno con acceso estable al registro público de npm.

@@ -17,8 +17,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.9 Web · Migración de facturación julio';
-const BUILD_ID = '2026-07-31-05C9';
+const APP_VERSION = 'Fase 5C.10 Web · Reconciliación de visas facturadas julio';
+const BUILD_ID = '2026-07-31-05C10';
 const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
 const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
 const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
@@ -729,28 +729,59 @@ function auditoriaFacturacionCompleta(caso = {}) {
     && Number(factura.cantidadVisasFacturadas) > 0;
 }
 
+function facturacionAutomaticaReal(caso = {}) {
+  const factura = caso.facturacion || {};
+  const origen = normalizar(factura.origenFechaFacturacion || '');
+  return factura.estadoFactura === 'facturada'
+    && factura.fechaFacturacionInferida !== true
+    && origen.includes('registro automatico al marcar la asesoria como facturada')
+    && !!(claveFechaDesdeValor(factura.fechaFacturacionIso) || claveFechaDesdeValor(factura.fechaFacturacionMs));
+}
+
+function requiereReconciliacionFacturacionJulio(caso = {}) {
+  if (caso.facturacion?.estadoFactura !== 'facturada') return false;
+  if (facturacionAutomaticaReal(caso)) return false;
+  if (caso.facturacion?.migracionJulio2026Completada === true) return false;
+
+  const mesCreacion = claveMesDesdeClaveFecha(claveCreacionCaso(caso));
+  if (mesCreacion !== PERIODO_MIGRACION_FACTURACION_JULIO) return false;
+
+  const mesFactura = mesFacturacionCaso(caso);
+  const cantidadActual = cantidadVisasCaso(caso);
+  const cantidadRegistrada = Number(caso.facturacion?.cantidadVisasFacturadas) || 0;
+  return mesFactura !== PERIODO_MIGRACION_FACTURACION_JULIO
+    || cantidadRegistrada !== cantidadActual
+    || !auditoriaFacturacionCompleta(caso);
+}
+
 function requiereMigracionFacturacionJulio(caso = {}) {
-  return caso.facturacion?.estadoFactura === 'facturada' && !auditoriaFacturacionCompleta(caso);
+  return caso.facturacion?.estadoFactura === 'facturada'
+    && (!auditoriaFacturacionCompleta(caso) || requiereReconciliacionFacturacionJulio(caso));
 }
 
 function prepararMigracionFacturacionJulio(caso = {}, actor = '') {
   const facturaAnterior = caso.facturacion || {};
   const claveFechaExistente = claveFechaDesdeValor(facturaAnterior.fechaFacturacionIso)
     || claveFechaDesdeValor(facturaAnterior.fechaFacturacionMs);
-  const asignarPrimeroJulio = !claveFechaExistente;
+  const forzarPrimeroJulio = requiereReconciliacionFacturacionJulio(caso);
+  const asignarPrimeroJulio = !claveFechaExistente || forzarPrimeroJulio;
   const fechaIso = asignarPrimeroJulio
     ? FECHA_MIGRACION_FACTURACION_JULIO_ISO
     : String(facturaAnterior.fechaFacturacionIso || new Date(Number(facturaAnterior.fechaFacturacionMs)).toISOString());
   const fechaMs = asignarPrimeroJulio
     ? FECHA_MIGRACION_FACTURACION_JULIO_MS
     : Number(facturaAnterior.fechaFacturacionMs) || Date.parse(fechaIso);
-  const periodo = /^\d{4}-\d{2}$/.test(String(facturaAnterior.periodoFacturacion || ''))
-    ? String(facturaAnterior.periodoFacturacion)
-    : claveMesDesdeClaveFecha(claveFechaDesdeValor(fechaIso) || claveFechaDesdeValor(fechaMs));
-  const cantidadVisas = cantidadVisasFacturadasCaso(caso);
+  const periodo = asignarPrimeroJulio
+    ? PERIODO_MIGRACION_FACTURACION_JULIO
+    : /^\d{4}-\d{2}$/.test(String(facturaAnterior.periodoFacturacion || ''))
+      ? String(facturaAnterior.periodoFacturacion)
+      : claveMesDesdeClaveFecha(claveFechaDesdeValor(fechaIso) || claveFechaDesdeValor(fechaMs));
+  const cantidadVisas = asignarPrimeroJulio
+    ? cantidadVisasCaso(caso)
+    : cantidadVisasFacturadasCaso(caso);
   const valorFacturado = valorFacturadoCaso(caso);
   const textoMigracion = asignarPrimeroJulio
-    ? `Corrección inicial de facturación: se asignó el 1 de julio de 2026 como fecha de facturación a ${cantidadVisas} visa${cantidadVisas === 1 ? '' : 's'} que ya estaba${cantidadVisas === 1 ? '' : 'n'} marcada${cantidadVisas === 1 ? '' : 's'} como facturada${cantidadVisas === 1 ? '' : 's'} sin fecha histórica identificable.`
+    ? `Reconciliación de julio de 2026: se asignó el 1 de julio de 2026 como fecha contable a ${cantidadVisas} visa${cantidadVisas === 1 ? '' : 's'} histórica${cantidadVisas === 1 ? '' : 's'} marcada${cantidadVisas === 1 ? '' : 's'} como facturada${cantidadVisas === 1 ? '' : 's'}.`
     : 'Se completaron los datos técnicos de auditoría de una facturación histórica, conservando su fecha registrada.';
   return {
     caso: {
@@ -763,11 +794,12 @@ function prepararMigracionFacturacionJulio(caso = {}, actor = '') {
         periodoFacturacion: periodo,
         facturadoPor: String(facturaAnterior.facturadoPor || (asignarPrimeroJulio ? actor : 'Registro histórico SIGV') || 'Migración inicial SIGV'),
         fechaFacturacionInferida: facturaAnterior.fechaFacturacionInferida === true || asignarPrimeroJulio,
-        origenFechaFacturacion: String(facturaAnterior.origenFechaFacturacion || (asignarPrimeroJulio
-          ? 'Migración inicial SIGV: fecha asignada al 1 de julio de 2026.'
-          : 'Auditoría histórica completada conservando la fecha previamente registrada.')),
+        origenFechaFacturacion: asignarPrimeroJulio
+          ? 'Reconciliación inicial SIGV: facturación histórica asignada al 1 de julio de 2026.'
+          : String(facturaAnterior.origenFechaFacturacion || 'Auditoría histórica completada conservando la fecha previamente registrada.'),
         valorFacturado,
         cantidadVisasFacturadas: cantidadVisas,
+        migracionJulio2026Completada: true,
       },
       actualizadoPor: String(actor || 'Migración inicial SIGV'),
       updatedAtMs: Date.now(),
@@ -1070,6 +1102,7 @@ function normalizarFacturacion(facturacion = {}, data = {}, config = configuraci
     origenFechaFacturacion: facturacion.estadoFactura === 'facturada' ? String(facturacion.origenFechaFacturacion || '') : '',
     valorFacturado: facturacion.estadoFactura === 'facturada' ? (Number(facturacion.valorFacturado) || 0) : 0,
     cantidadVisasFacturadas: facturacion.estadoFactura === 'facturada' ? (Number(facturacion.cantidadVisasFacturadas) || 0) : 0,
+    migracionJulio2026Completada: facturacion.estadoFactura === 'facturada' && facturacion.migracionJulio2026Completada === true,
     valor: valorCalculado || 0,
   };
 }
@@ -2001,8 +2034,8 @@ function EstadoApp({ perfil, usuarioAuth, permisos, seguridad, diagnostico, erro
                 ? 'Revisión reservada al Administrador'
                 : 'Sin registros pendientes'}</strong>
         <small>{migracionFacturacion?.estado === 'completada' || migracionFacturacion?.estado === 'parcial'
-          ? `${migracionFacturacion.asesoriasMigradas} asesoría${migracionFacturacion.asesoriasMigradas === 1 ? '' : 's'} con auditoría completada. ${migracionFacturacion.visasMigradas} visa${migracionFacturacion.visasMigradas === 1 ? '' : 's'} sin fecha fueron asignadas al 1 de julio de 2026.${migracionFacturacion.errores ? ` ${migracionFacturacion.errores} registro${migracionFacturacion.errores === 1 ? '' : 's'} requiere${migracionFacturacion.errores === 1 ? '' : 'n'} revisión.` : ''}`
-          : 'La corrección solo actúa sobre facturadas antiguas que no tengan fecha ni periodo identificable.'}</small>
+          ? `${migracionFacturacion.asesoriasMigradas} asesoría${migracionFacturacion.asesoriasMigradas === 1 ? '' : 's'} con auditoría completada. ${migracionFacturacion.visasMigradas} visa${migracionFacturacion.visasMigradas === 1 ? '' : 's'} históricas fueron reconciliadas con el 1 de julio de 2026.${migracionFacturacion.errores ? ` ${migracionFacturacion.errores} registro${migracionFacturacion.errores === 1 ? '' : 's'} requiere${migracionFacturacion.errores === 1 ? '' : 'n'} revisión.` : ''}`
+          : 'La reconciliación actúa sobre facturadas históricas creadas en julio que no estén incluidas correctamente en el periodo o cuya cantidad registrada no coincida.'}</small>
       </section>
     </div>
 

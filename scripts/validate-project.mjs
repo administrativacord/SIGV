@@ -24,7 +24,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.9') errors.push(`La versión esperada es 5.2.9 y se encontró ${pkg.version}`);
+if (pkg.version !== '5.2.10') errors.push(`La versión esperada es 5.2.10 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -44,7 +44,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C.9 Web · Migración de facturación julio",
+  "Fase 5C.10 Web · Reconciliación de visas facturadas julio",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -125,6 +125,9 @@ for (const expected of [
   'tipoClienteKey: tipoCliente',
   'FECHA_MIGRACION_FACTURACION_JULIO_ISO',
   'function migrarFacturacionInicialJulio',
+  'function requiereReconciliacionFacturacionJulio',
+  'function facturacionAutomaticaReal',
+  'migracionJulio2026Completada',
   'periodoFacturacion',
   'facturadoPor',
   'fechaFacturacionInferida',
@@ -176,4 +179,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C.9 aprobada.');
+console.log('Validación SIGV Fase 5C.10 aprobada.');
