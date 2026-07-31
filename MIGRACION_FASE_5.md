@@ -112,3 +112,28 @@ No requiere migración manual. Cuando una asesoría se marca como facturada, la 
 Las asesorías antiguas ya facturadas intentan recuperar su fecha desde el evento correspondiente del historial. Si no existe fecha ni evento identificable, SIGV no asigna el registro al mes actual: el Dashboard muestra una advertencia para evitar distorsionar el reporte.
 
 Esta versión no cambia `firestore.rules` respecto de Fase 5C.5.
+
+
+## Actualización Fase 5C.7
+
+Se agregó `facturacion.nombreEmpresaAfiliada`, visible únicamente cuando al menos un integrante es Afiliado o Paquete Premium Afiliado. Firestore admite el nuevo campo sin migración manual. No se modificaron las reglas de seguridad.
+
+## Actualización Fase 5C.8
+
+No requiere migración manual. El tipo de cliente o paquete se sincroniza en el frontend para todos los integrantes cuando el usuario cambia la selección en cualquiera de ellos. Los integrantes nuevos heredan la modalidad del primer integrante. Las asesorías históricas con modalidades mixtas no se alteran automáticamente hasta que sean editadas. No se modificaron las reglas de Firestore.
+
+
+## Actualización Fase 5C.9 — Corrección inicial de julio
+
+Esta versión sí ejecuta una migración automática y controlada sobre las asesorías que ya aparecen como Facturadas.
+
+1. Publica primero el frontend 5C.9.
+2. Inicia sesión con un Administrador.
+3. Espera a que termine la carga inicial.
+4. Entra a `Estado de la app` y revisa `Corrección inicial de facturación`.
+5. Confirma que el Dashboard de julio muestre el mismo número de visas facturadas del acumulado general, salvo que exista alguna facturación legítima de otro mes.
+6. Publica después las nuevas reglas de Firestore.
+
+Los registros sin fecha identificable reciben `1 de julio de 2026`. Los que ya tenían una fecha válida la conservan. La operación guarda valor, cantidad de visas, periodo y origen de la fecha, y agrega una anotación en el historial.
+
+Desde esta versión las reglas exigen auditoría completa al marcar una asesoría como Facturada. Por esa razón es importante realizar el primer ingreso con Administrador antes de probar ediciones con cuentas Asesor.

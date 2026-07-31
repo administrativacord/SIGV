@@ -17,8 +17,11 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.6 Web · Facturación mensual';
-const BUILD_ID = '2026-07-31-05C6';
+const APP_VERSION = 'Fase 5C.9 Web · Migración de facturación julio';
+const BUILD_ID = '2026-07-31-05C9';
+const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
+const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
+const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
 
 
 const rolesSigv = {
@@ -176,12 +179,17 @@ function crearFacturacion(tipoTramite = 'primeraVez') {
     telefono: '',
     direccion: '',
     ciudad: '',
+    nombreEmpresaAfiliada: '',
     correo: '',
     tipoTramite,
     medioPago: '',
     estadoFactura: 'porFacturar',
     fechaFacturacionIso: '',
     fechaFacturacionMs: 0,
+    periodoFacturacion: '',
+    facturadoPor: '',
+    fechaFacturacionInferida: false,
+    origenFechaFacturacion: '',
     valorFacturado: 0,
     cantidadVisasFacturadas: 0,
     valor: 0,
@@ -249,6 +257,21 @@ function normalizarIntegrantes(data = {}) {
   return normalizados.length ? normalizados : [crearIntegrante(1)];
 }
 
+function tipoClienteEsAfiliado(tipoClienteKey = '') {
+  return tipoClienteKey === 'afiliado' || tipoClienteKey === 'premiumAfiliado';
+}
+
+function hayIntegranteAfiliado(integrantes = []) {
+  const lista = Array.isArray(integrantes) ? integrantes : normalizarIntegrantes(integrantes);
+  return lista.some(integrante => tipoClienteEsAfiliado(integrante.tipoCliente || integrante.tipoClienteKey));
+}
+
+function facturacionSegunAfiliacion(facturacion = {}, integrantes = []) {
+  return hayIntegranteAfiliado(integrantes)
+    ? facturacion
+    : { ...facturacion, nombreEmpresaAfiliada: '' };
+}
+
 function serializarIntegrante(integrante, indice = 0) {
   const normalizado = crearIntegrante(indice + 1, integrante);
   return {
@@ -271,7 +294,13 @@ function ajustarCantidadIntegrantes(listaActual = [], cantidad = 1) {
   const cantidadNormalizada = Math.max(1, Math.min(30, Number(cantidad) || 1));
   const actuales = normalizarIntegrantes({ integrantes: listaActual });
   const nuevos = [...actuales];
-  while (nuevos.length < cantidadNormalizada) nuevos.push(crearIntegrante(nuevos.length + 1));
+  const tipoClienteReferencia = actuales[0]?.tipoCliente || actuales[0]?.tipoClienteKey || 'afiliado';
+  while (nuevos.length < cantidadNormalizada) {
+    nuevos.push(crearIntegrante(nuevos.length + 1, {
+      tipoCliente: tipoClienteReferencia,
+      tipoClienteKey: tipoClienteReferencia,
+    }));
+  }
   return nuevos.slice(0, cantidadNormalizada).map((integrante, indice) => crearIntegrante(indice + 1, integrante));
 }
 
@@ -583,7 +612,7 @@ function describirCambioFacturacion(casoAnterior = {}, casoNuevo = {}) {
     : 'La asesoría fue marcada nuevamente como por facturar.';
 }
 
-function facturacionConFecha(facturacionNueva = {}, facturacionAnterior = {}, data = {}, config = configuracionBase, valorOverride = null, cantidadVisas = 1, ahora = new Date()) {
+function facturacionConFecha(facturacionNueva = {}, facturacionAnterior = {}, data = {}, config = configuracionBase, valorOverride = null, cantidadVisas = 1, ahora = new Date(), facturadoPor = '') {
   const normalizada = normalizarFacturacion(facturacionNueva, data, config, valorOverride);
   const estadoAnterior = facturacionAnterior?.estadoFactura === 'facturada' ? 'facturada' : 'porFacturar';
 
@@ -592,6 +621,10 @@ function facturacionConFecha(facturacionNueva = {}, facturacionAnterior = {}, da
       ...normalizada,
       fechaFacturacionIso: '',
       fechaFacturacionMs: 0,
+      periodoFacturacion: '',
+      facturadoPor: '',
+      fechaFacturacionInferida: false,
+      origenFechaFacturacion: '',
       valorFacturado: 0,
       cantidadVisasFacturadas: 0,
     };
@@ -599,13 +632,20 @@ function facturacionConFecha(facturacionNueva = {}, facturacionAnterior = {}, da
 
   const fechaIsoExistente = String(facturacionAnterior?.fechaFacturacionIso || facturacionNueva?.fechaFacturacionIso || '');
   const fechaMsExistente = Number(facturacionAnterior?.fechaFacturacionMs || facturacionNueva?.fechaFacturacionMs) || 0;
+  const periodoExistente = String(facturacionAnterior?.periodoFacturacion || facturacionNueva?.periodoFacturacion || '');
+  const periodoDesdeFecha = claveMesDesdeClaveFecha(
+    claveFechaDesdeValor(fechaIsoExistente) || claveFechaDesdeValor(fechaMsExistente)
+  );
+
   if (estadoAnterior === 'facturada') {
     return {
       ...normalizada,
-      // Los registros históricos que ya estaban facturados conservan su fecha original.
-      // Si no tenían fecha técnica, no se les asigna artificialmente la fecha de esta edición.
       fechaFacturacionIso: fechaIsoExistente,
       fechaFacturacionMs: fechaMsExistente,
+      periodoFacturacion: /^\d{4}-\d{2}$/.test(periodoExistente) ? periodoExistente : periodoDesdeFecha,
+      facturadoPor: String(facturacionAnterior?.facturadoPor || facturacionNueva?.facturadoPor || facturadoPor || ''),
+      fechaFacturacionInferida: facturacionAnterior?.fechaFacturacionInferida === true || facturacionNueva?.fechaFacturacionInferida === true,
+      origenFechaFacturacion: String(facturacionAnterior?.origenFechaFacturacion || facturacionNueva?.origenFechaFacturacion || ''),
       valorFacturado: Number(facturacionAnterior?.valorFacturado) > 0
         ? Number(facturacionAnterior.valorFacturado)
         : Number(facturacionNueva?.valorFacturado) > 0
@@ -619,10 +659,15 @@ function facturacionConFecha(facturacionNueva = {}, facturacionAnterior = {}, da
     };
   }
 
+  const partesFactura = partesFechaColombia(ahora);
   return {
     ...normalizada,
     fechaFacturacionIso: ahora.toISOString(),
     fechaFacturacionMs: ahora.getTime(),
+    periodoFacturacion: `${partesFactura.year}-${String(partesFactura.month).padStart(2, '0')}`,
+    facturadoPor: String(facturadoPor || ''),
+    fechaFacturacionInferida: false,
+    origenFechaFacturacion: 'Registro automático al marcar la asesoría como facturada.',
     valorFacturado: Number(valorOverride) || 0,
     cantidadVisasFacturadas: Number(cantidadVisas) || 1,
   };
@@ -643,19 +688,126 @@ function claveFacturacionCaso(caso = {}) {
   return claveFechaEvento(eventoFacturacionCaso(caso));
 }
 
+function mesFacturacionCaso(caso = {}) {
+  if (caso.facturacion?.estadoFactura !== 'facturada') return '';
+  const periodo = String(caso.facturacion?.periodoFacturacion || '');
+  if (/^\d{4}-\d{2}$/.test(periodo)) return periodo;
+  return claveMesDesdeClaveFecha(claveFacturacionCaso(caso));
+}
+
 function completarFechaFacturacionHistorica(caso = {}, facturacion = {}) {
   if (facturacion.estadoFactura !== 'facturada' || facturacion.fechaFacturacionIso || facturacion.fechaFacturacionMs) return facturacion;
   const eventoHistorico = eventoFacturacionCaso(caso);
   if (!eventoHistorico) return facturacion;
   const fechaMs = Number(eventoHistorico.fechaMs) || marcaTiempoEvento(eventoHistorico) || 0;
   const fechaIso = String(eventoHistorico.fechaIso || (fechaMs ? new Date(fechaMs).toISOString() : ''));
-  return { ...facturacion, fechaFacturacionIso: fechaIso, fechaFacturacionMs: fechaMs };
+  return {
+    ...facturacion,
+    fechaFacturacionIso: fechaIso,
+    fechaFacturacionMs: fechaMs,
+    periodoFacturacion: claveMesDesdeClaveFecha(claveFechaDesdeValor(fechaIso) || claveFechaDesdeValor(fechaMs)),
+    fechaFacturacionInferida: true,
+    origenFechaFacturacion: 'Fecha recuperada del historial de la asesoría.',
+  };
 }
 
 function fechaFacturacionLegible(facturacion = {}) {
   const clave = claveFechaDesdeValor(facturacion.fechaFacturacionIso)
     || claveFechaDesdeValor(facturacion.fechaFacturacionMs);
   return clave ? fechaLargaDesdeClave(clave) : '';
+}
+
+function auditoriaFacturacionCompleta(caso = {}) {
+  if (caso.facturacion?.estadoFactura !== 'facturada') return true;
+  const factura = caso.facturacion || {};
+  const tieneFecha = !!(claveFechaDesdeValor(factura.fechaFacturacionIso)
+    || claveFechaDesdeValor(factura.fechaFacturacionMs));
+  return tieneFecha
+    && /^\d{4}-\d{2}$/.test(String(factura.periodoFacturacion || ''))
+    && String(factura.facturadoPor || '').trim().length > 0
+    && Number(factura.valorFacturado) >= 0
+    && Number(factura.cantidadVisasFacturadas) > 0;
+}
+
+function requiereMigracionFacturacionJulio(caso = {}) {
+  return caso.facturacion?.estadoFactura === 'facturada' && !auditoriaFacturacionCompleta(caso);
+}
+
+function prepararMigracionFacturacionJulio(caso = {}, actor = '') {
+  const facturaAnterior = caso.facturacion || {};
+  const claveFechaExistente = claveFechaDesdeValor(facturaAnterior.fechaFacturacionIso)
+    || claveFechaDesdeValor(facturaAnterior.fechaFacturacionMs);
+  const asignarPrimeroJulio = !claveFechaExistente;
+  const fechaIso = asignarPrimeroJulio
+    ? FECHA_MIGRACION_FACTURACION_JULIO_ISO
+    : String(facturaAnterior.fechaFacturacionIso || new Date(Number(facturaAnterior.fechaFacturacionMs)).toISOString());
+  const fechaMs = asignarPrimeroJulio
+    ? FECHA_MIGRACION_FACTURACION_JULIO_MS
+    : Number(facturaAnterior.fechaFacturacionMs) || Date.parse(fechaIso);
+  const periodo = /^\d{4}-\d{2}$/.test(String(facturaAnterior.periodoFacturacion || ''))
+    ? String(facturaAnterior.periodoFacturacion)
+    : claveMesDesdeClaveFecha(claveFechaDesdeValor(fechaIso) || claveFechaDesdeValor(fechaMs));
+  const cantidadVisas = cantidadVisasFacturadasCaso(caso);
+  const valorFacturado = valorFacturadoCaso(caso);
+  const textoMigracion = asignarPrimeroJulio
+    ? `Corrección inicial de facturación: se asignó el 1 de julio de 2026 como fecha de facturación a ${cantidadVisas} visa${cantidadVisas === 1 ? '' : 's'} que ya estaba${cantidadVisas === 1 ? '' : 'n'} marcada${cantidadVisas === 1 ? '' : 's'} como facturada${cantidadVisas === 1 ? '' : 's'} sin fecha histórica identificable.`
+    : 'Se completaron los datos técnicos de auditoría de una facturación histórica, conservando su fecha registrada.';
+  return {
+    caso: {
+      ...caso,
+      facturacion: {
+        ...facturaAnterior,
+        estadoFactura: 'facturada',
+        fechaFacturacionIso: fechaIso,
+        fechaFacturacionMs: fechaMs,
+        periodoFacturacion: periodo,
+        facturadoPor: String(facturaAnterior.facturadoPor || (asignarPrimeroJulio ? actor : 'Registro histórico SIGV') || 'Migración inicial SIGV'),
+        fechaFacturacionInferida: facturaAnterior.fechaFacturacionInferida === true || asignarPrimeroJulio,
+        origenFechaFacturacion: String(facturaAnterior.origenFechaFacturacion || (asignarPrimeroJulio
+          ? 'Migración inicial SIGV: fecha asignada al 1 de julio de 2026.'
+          : 'Auditoría histórica completada conservando la fecha previamente registrada.')),
+        valorFacturado,
+        cantidadVisasFacturadas: cantidadVisas,
+      },
+      actualizadoPor: String(actor || 'Migración inicial SIGV'),
+      updatedAtMs: Date.now(),
+      historial: [...(caso.historial || []), evento('Migración', textoMigracion, 'Sistema SIGV')],
+    },
+    asignarPrimeroJulio,
+    cantidadVisas,
+  };
+}
+
+async function migrarFacturacionInicialJulio(casos = [], actor = '') {
+  const candidatos = casos.filter(requiereMigracionFacturacionJulio);
+  if (!candidatos.length) {
+    return { casos, asesoriasMigradas: 0, visasMigradas: 0, errores: 0 };
+  }
+
+  const reemplazos = new Map();
+  let visasMigradas = 0;
+  let errores = 0;
+
+  for (const caso of candidatos) {
+    const preparada = prepararMigracionFacturacionJulio(caso, actor);
+    const migrado = preparada.caso;
+    try {
+      const ahoraIso = new Date().toISOString();
+      await guardarDocumentoRest('casos', migrado.id, { ...migrado, updatedAtIso: ahoraIso });
+      reemplazos.set(migrado.id, { ...migrado, updatedAtIso: ahoraIso });
+      if (preparada.asignarPrimeroJulio) visasMigradas += preparada.cantidadVisas;
+    } catch (error) {
+      errores += 1;
+      console.error(`No se pudo migrar la auditoría de facturación de ${caso.id}:`, error);
+    }
+  }
+
+  return {
+    casos: casos.map(caso => reemplazos.get(caso.id) || caso),
+    asesoriasMigradas: reemplazos.size,
+    visasMigradas,
+    errores,
+  };
 }
 
 function valorEstimadoCaso(caso = {}) {
@@ -719,8 +871,7 @@ function resumenFinancieroMes(casos = [], year, month) {
     }
 
     if (!esFacturada) continue;
-    const claveFactura = claveFacturacionCaso(caso);
-    const mesFactura = claveMesDesdeClaveFecha(claveFactura);
+    const mesFactura = mesFacturacionCaso(caso);
     if (!mesFactura) {
       resumen.facturadasSinFecha += 1;
       continue;
@@ -906,12 +1057,17 @@ function normalizarFacturacion(facturacion = {}, data = {}, config = configuraci
     telefono: facturacion.telefono || '',
     direccion: facturacion.direccion || '',
     ciudad: facturacion.ciudad || '',
+    nombreEmpresaAfiliada: data.requiereEmpresaAfiliada === false ? '' : (facturacion.nombreEmpresaAfiliada || ''),
     correo: facturacion.correo || '',
     tipoTramite,
     medioPago: facturacion.medioPago || '',
     estadoFactura: facturacion.estadoFactura === 'facturada' ? 'facturada' : 'porFacturar',
     fechaFacturacionIso: facturacion.estadoFactura === 'facturada' ? String(facturacion.fechaFacturacionIso || '') : '',
     fechaFacturacionMs: facturacion.estadoFactura === 'facturada' ? (Number(facturacion.fechaFacturacionMs) || 0) : 0,
+    periodoFacturacion: facturacion.estadoFactura === 'facturada' ? String(facturacion.periodoFacturacion || '') : '',
+    facturadoPor: facturacion.estadoFactura === 'facturada' ? String(facturacion.facturadoPor || '') : '',
+    fechaFacturacionInferida: facturacion.estadoFactura === 'facturada' && facturacion.fechaFacturacionInferida === true,
+    origenFechaFacturacion: facturacion.estadoFactura === 'facturada' ? String(facturacion.origenFechaFacturacion || '') : '',
     valorFacturado: facturacion.estadoFactura === 'facturada' ? (Number(facturacion.valorFacturado) || 0) : 0,
     cantidadVisasFacturadas: facturacion.estadoFactura === 'facturada' ? (Number(facturacion.cantidadVisasFacturadas) || 0) : 0,
     valor: valorCalculado || 0,
@@ -928,6 +1084,7 @@ function generarTextoFacturacion(facturacion = {}, tipoClienteKey = 'afiliado', 
     `Teléfono: ${datos.telefono || 'Pendiente'}`,
     `Dirección: ${datos.direccion || 'Pendiente'}`,
     `Ciudad: ${datos.ciudad || 'Pendiente'}`,
+    ...(datos.nombreEmpresaAfiliada ? [`Nombre de la empresa afiliada: ${datos.nombreEmpresaAfiliada}`] : []),
     `Correo: ${datos.correo || 'Pendiente'}`,
     `Tipo de trámite: ${textoSolicitud(datos.tipoTramite)}`,
     `Medio de pago: ${datos.medioPago || 'Pendiente'}`,
@@ -1050,7 +1207,7 @@ function prepararCasoGuardado(caso, config = configuracionBase) {
   const principal = integrantes[0] || crearIntegrante(1);
   const facturacionNormalizada = completarFechaFacturacionHistorica(
     caso,
-    normalizarFacturacion(caso.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, configuracion, calc.totalPesos),
+    normalizarFacturacion(caso.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud, requiereEmpresaAfiliada: hayIntegranteAfiliado(integrantes) }, configuracion, calc.totalPesos),
   );
   const valorEstimadoGuardado = caso.valorEstimado !== undefined && caso.valorEstimado !== null
     ? Number(caso.valorEstimado) || 0
@@ -1108,6 +1265,7 @@ function App() {
   const [requiereInicializacion, setRequiereInicializacion] = useState(false);
   const [inicializandoSeguridad, setInicializandoSeguridad] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [migracionFacturacion, setMigracionFacturacion] = useState({ estado: 'pendiente', asesoriasMigradas: 0, visasMigradas: 0, errores: 0 });
 
   useEffect(() => {
     if (!menuAbierto) return undefined;
@@ -1130,6 +1288,7 @@ function App() {
         setSeguridad(normalizarSeguridad());
         setRequiereInicializacion(false);
         setConfigState(normalizarConfiguracion(configuracionBase));
+        setMigracionFacturacion({ estado: 'pendiente', asesoriasMigradas: 0, visasMigradas: 0, errores: 0 });
       }
     });
     return cancelar;
@@ -1208,9 +1367,24 @@ function App() {
         setConfigState(configLimpia);
         localStorage.setItem('sigv_configuracion_fase5_backup', JSON.stringify(configLimpia));
 
-        const lista = casosRemotos
+        let lista = casosRemotos
           .map(item => prepararCasoGuardado(item, configLimpia))
           .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+        if (esAdmin) {
+          setMigracionFacturacion({ estado: 'revisando', asesoriasMigradas: 0, visasMigradas: 0, errores: 0 });
+          const resultadoMigracion = await migrarFacturacionInicialJulio(lista, emailPerfil);
+          lista = resultadoMigracion.casos;
+          setMigracionFacturacion({
+            estado: resultadoMigracion.errores > 0 ? 'parcial' : resultadoMigracion.asesoriasMigradas > 0 ? 'completada' : 'sinPendientes',
+            asesoriasMigradas: resultadoMigracion.asesoriasMigradas,
+            visasMigradas: resultadoMigracion.visasMigradas,
+            errores: resultadoMigracion.errores,
+          });
+        } else {
+          setMigracionFacturacion({ estado: 'soloAdministrador', asesoriasMigradas: 0, visasMigradas: 0, errores: 0 });
+        }
+
         setCasos(lista);
         localStorage.setItem('sigv_casos_fase5_backup', JSON.stringify(lista));
 
@@ -1402,7 +1576,7 @@ function App() {
       seguimiento: form.seguimiento || 'Asesoría creada. Pendiente seguimiento.',
       fechaAsesoria: form.fechaAsesoria,
       horaAsesoria: form.horaAsesoria,
-      facturacion: facturacionConFecha(form.facturacion, {}, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calculo.totalPesos, integrantes.length),
+      facturacion: facturacionConFecha(form.facturacion, {}, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud, requiereEmpresaAfiliada: hayIntegranteAfiliado(integrantes) }, config, calculo.totalPesos, integrantes.length, new Date(), creadoPor),
       fechaCitaEmbajada: form.fechaCitaEmbajada,
       estadoManual: form.estadoManual,
       creadoPor,
@@ -1490,7 +1664,7 @@ function App() {
       valorDescuento: calc.valorDescuento,
       estado: calc.estado,
       documentos: `${calc.completos}/${calc.requeridos.length}`,
-      facturacion: facturacionConFecha(casoActualizado.facturacion, casoAnteriorGuardado.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud }, config, calc.totalPesos, integrantes.length, ahoraActualizacion),
+      facturacion: facturacionConFecha(casoActualizado.facturacion, casoAnteriorGuardado.facturacion, { tipoClienteKey: principal.tipoCliente, tipoSolicitudKey: principal.tipoSolicitud, requiereEmpresaAfiliada: hayIntegranteAfiliado(integrantes) }, config, calc.totalPesos, integrantes.length, ahoraActualizacion, actualizadoPor),
       fechaCitaEmbajada: casoActualizado.fechaCitaEmbajada || '',
       actualizadoPor,
       updatedAtMs: Date.now(),
@@ -1768,13 +1942,13 @@ function App() {
 
       {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} onResetRoles={reiniciarRolesSigv} guardando={guardando} perfilActual={perfil} seguridad={seguridad} onActivateSecurity={activarSeguridadManual} />}
 
-      {!cargando && vista === 'estadoApp' && <EstadoApp perfil={perfil} usuarioAuth={usuarioAuth} permisos={permisos} seguridad={seguridad} diagnostico={diagnostico} errorConexion={errorConexion} guardando={guardando} onTest={ejecutarDiagnosticoFirestore} />}
+      {!cargando && vista === 'estadoApp' && <EstadoApp perfil={perfil} usuarioAuth={usuarioAuth} permisos={permisos} seguridad={seguridad} diagnostico={diagnostico} errorConexion={errorConexion} guardando={guardando} onTest={ejecutarDiagnosticoFirestore} migracionFacturacion={migracionFacturacion} />}
     </main>
   </div>;
 }
 
 
-function EstadoApp({ perfil, usuarioAuth, permisos, seguridad, diagnostico, errorConexion, guardando, onTest }) {
+function EstadoApp({ perfil, usuarioAuth, permisos, seguridad, diagnostico, errorConexion, guardando, onTest, migracionFacturacion }) {
   const seguridadActiva = seguridad?.primerAdministradorConfigurado === true;
   const nombreUsuario = perfil?.nombre || usuarioAuth?.displayName || usuarioAuth?.email || 'Usuario SIGV';
   const correoUsuario = usuarioAuth?.email || perfil?.email || '';
@@ -1813,6 +1987,22 @@ function EstadoApp({ perfil, usuarioAuth, permisos, seguridad, diagnostico, erro
         <strong>{nombreUsuario}</strong>
         <small>{correoUsuario}</small>
         <span className="status-role">Rol: {rolUsuario}</span>
+      </section>
+
+      <section className="panel status-card">
+        <span className="status-label">Corrección inicial de facturación</span>
+        <strong>{migracionFacturacion?.estado === 'revisando'
+          ? 'Revisando registros…'
+          : migracionFacturacion?.estado === 'completada'
+            ? 'Migración completada'
+            : migracionFacturacion?.estado === 'parcial'
+              ? 'Migración con novedades'
+              : migracionFacturacion?.estado === 'soloAdministrador'
+                ? 'Revisión reservada al Administrador'
+                : 'Sin registros pendientes'}</strong>
+        <small>{migracionFacturacion?.estado === 'completada' || migracionFacturacion?.estado === 'parcial'
+          ? `${migracionFacturacion.asesoriasMigradas} asesoría${migracionFacturacion.asesoriasMigradas === 1 ? '' : 's'} con auditoría completada. ${migracionFacturacion.visasMigradas} visa${migracionFacturacion.visasMigradas === 1 ? '' : 's'} sin fecha fueron asignadas al 1 de julio de 2026.${migracionFacturacion.errores ? ` ${migracionFacturacion.errores} registro${migracionFacturacion.errores === 1 ? '' : 's'} requiere${migracionFacturacion.errores === 1 ? '' : 'n'} revisión.` : ''}`
+          : 'La corrección solo actúa sobre facturadas antiguas que no tengan fecha ni periodo identificable.'}</small>
       </section>
     </div>
 
@@ -2169,6 +2359,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
       cantidad: nuevaCantidad,
       integrantes: nuevosIntegrantes,
       ajustesPrecio: ajustesPrecioParaIntegrantes(prev.ajustesPrecio, nuevosIntegrantes),
+      facturacion: facturacionSegunAfiliacion(prev.facturacion, nuevosIntegrantes),
     }));
   }
 
@@ -2178,6 +2369,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
       cantidad: nuevosIntegrantes.length,
       integrantes: nuevosIntegrantes,
       ajustesPrecio: ajustesPrecioParaIntegrantes(prev.ajustesPrecio, nuevosIntegrantes),
+      facturacion: facturacionSegunAfiliacion(prev.facturacion, nuevosIntegrantes),
       estadoManual: '',
     }));
   }
@@ -2228,6 +2420,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
         valorCaso={calculo.totalPesos}
         cantidadIntegrantes={integrantes.length}
         descuentoCantidadHabilitado={calculo.aplicarDescuentoCantidad}
+        requiereEmpresaAfiliada={hayIntegranteAfiliado(integrantes)}
       />
 
       <h2>7. Fecha Cita embajada</h2>
@@ -2262,6 +2455,7 @@ function NuevoCaso({ form, setForm, calculo, guardarCaso, config, guardando = fa
       horaAsesoria={form.horaAsesoria}
       fechaCitaEmbajada={form.fechaCitaEmbajada}
       cantidadIntegrantes={integrantes.length}
+      requiereEmpresaAfiliada={hayIntegranteAfiliado(integrantes)}
     />
   </form>;
 }
@@ -2312,9 +2506,18 @@ function IntegrantesSecciones({ integrantes, onChange, config, ajustesPrecio = {
   }
 
   function cambiarTipoCliente(indice, tipoCliente) {
-    const integrante = lista[indice];
-    quitarPrecioPersonalizado(integrante.id);
-    actualizarIntegrante(indice, { tipoCliente, tipoClienteKey: tipoCliente });
+    const idsConCambio = lista
+      .filter(integrante => integrante.tipoCliente !== tipoCliente)
+      .map(integrante => integrante.id);
+    const nuevosAjustes = { ...ajustesNormalizados };
+    idsConCambio.forEach(integranteId => delete nuevosAjustes[integranteId]);
+    if (idsConCambio.length) onAjustesPrecioChange?.(nuevosAjustes);
+    const nuevos = lista.map((integrante, i) => crearIntegrante(i + 1, {
+      ...integrante,
+      tipoCliente,
+      tipoClienteKey: tipoCliente,
+    }));
+    onChange(nuevos);
   }
 
   function cambiarSolicitud(indice, tipoSolicitud) {
@@ -2327,6 +2530,7 @@ function IntegrantesSecciones({ integrantes, onChange, config, ajustesPrecio = {
 
   return <>
     <h2>3. Datos del cliente y tipo de solicitud</h2>
+    <p className="hint">El tipo de cliente o paquete se aplica a toda la asesoría. Al cambiarlo en cualquier integrante, SIGV actualizará automáticamente a todos los integrantes.</p>
     <div className="integrantes-stack">
       {lista.map((integrante, indice) => <div className="integrante-card" key={integrante.id}>
         <div className="integrante-title">Integrante {indice + 1} · {integrante.nombre || 'Sin nombre'}</div>
@@ -2338,7 +2542,7 @@ function IntegrantesSecciones({ integrantes, onChange, config, ajustesPrecio = {
 
         <div className="integrante-subsection">
           <strong>Tipo de solicitud</strong>
-          <span>Selecciona el paquete y el trámite correspondiente a este integrante.</span>
+          <span>Selecciona la modalidad compartida de la asesoría y el trámite correspondiente a este integrante.</span>
         </div>
         <div className="two-cols">
           <label>Tipo de cliente / paquete
@@ -2491,6 +2695,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
       cantidad: nuevaCantidad,
       integrantes: nuevosIntegrantes,
       ajustesPrecio: ajustesPrecioParaIntegrantes(prev.ajustesPrecio, nuevosIntegrantes),
+      facturacion: facturacionSegunAfiliacion(prev.facturacion, nuevosIntegrantes),
       estadoManual: '',
     }));
   }
@@ -2501,6 +2706,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
       cantidad: nuevosIntegrantes.length,
       integrantes: nuevosIntegrantes,
       ajustesPrecio: ajustesPrecioParaIntegrantes(prev.ajustesPrecio, nuevosIntegrantes),
+      facturacion: facturacionSegunAfiliacion(prev.facturacion, nuevosIntegrantes),
       estadoManual: '',
     }));
   }
@@ -2611,6 +2817,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
           valorCaso={calc.totalPesos}
           cantidadIntegrantes={integrantes.length}
           descuentoCantidadHabilitado={calc.aplicarDescuentoCantidad}
+          requiereEmpresaAfiliada={hayIntegranteAfiliado(integrantes)}
         />
 
         <h2>7. Fecha Cita embajada</h2>
@@ -2662,6 +2869,7 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
         horaAsesoria={edit.horaAsesoria}
         fechaCitaEmbajada={edit.fechaCitaEmbajada}
         cantidadIntegrantes={integrantes.length}
+        requiereEmpresaAfiliada={hayIntegranteAfiliado(integrantes)}
       />
     </div>
   </div>;
@@ -2749,14 +2957,14 @@ function Historial({ historial }) {
   </details>;
 }
 
-function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, datosCliente = {}, config, valorCaso = null, cantidadIntegrantes = 1, descuentoCantidadHabilitado = true }) {
+function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, datosCliente = {}, config, valorCaso = null, cantidadIntegrantes = 1, descuentoCantidadHabilitado = true, requiereEmpresaAfiliada = false }) {
   const [copiadoFacturacion, setCopiadoFacturacion] = useState(false);
   const valorFinal = valorCaso !== null && valorCaso !== undefined ? Number(valorCaso) : null;
-  const facturacion = normalizarFacturacion(data, { tipoClienteKey, tipoSolicitudKey }, config, valorFinal);
+  const facturacion = normalizarFacturacion(data, { tipoClienteKey, tipoSolicitudKey, requiereEmpresaAfiliada }, config, valorFinal);
   const valor = valorFinal !== null ? valorFinal : calcularValorFacturacion(facturacion, tipoClienteKey, config);
 
   function actualizar(campo, valorCampo) {
-    onChange(normalizarFacturacion({ ...facturacion, [campo]: valorCampo }, { tipoClienteKey, tipoSolicitudKey }, config, valorFinal));
+    onChange(normalizarFacturacion({ ...facturacion, [campo]: valorCampo }, { tipoClienteKey, tipoSolicitudKey, requiereEmpresaAfiliada }, config, valorFinal));
   }
 
   function copiarDatosCliente() {
@@ -2766,7 +2974,7 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
       telefono: datosCliente.telefono || facturacion.telefono,
       correo: datosCliente.correo || facturacion.correo,
       tipoTramite: tipoSolicitudKey || facturacion.tipoTramite,
-    }, { tipoClienteKey, tipoSolicitudKey }, config, valorFinal));
+    }, { tipoClienteKey, tipoSolicitudKey, requiereEmpresaAfiliada }, config, valorFinal));
   }
 
   async function copiarDatosFacturacion() {
@@ -2794,6 +3002,7 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
       <Field label="Teléfono" value={facturacion.telefono} onChange={v => actualizar('telefono', v)} />
       <Field label="Dirección" value={facturacion.direccion} onChange={v => actualizar('direccion', v)} />
       <Field label="Ciudad" value={facturacion.ciudad} onChange={v => actualizar('ciudad', v)} />
+      {requiereEmpresaAfiliada && <Field label="Nombre de la empresa afiliada" value={facturacion.nombreEmpresaAfiliada} onChange={v => actualizar('nombreEmpresaAfiliada', v)} />}
       <Field label="Correo" type="email" value={facturacion.correo} onChange={v => actualizar('correo', v)} />
       <label>Tipo de trámite
         <select value={facturacion.tipoTramite} onChange={e => actualizar('tipoTramite', e.target.value)}>
@@ -2824,6 +3033,7 @@ function FacturacionFields({ data, onChange, tipoClienteKey, tipoSolicitudKey, d
         {fechaFacturacionLegible(facturacion) || 'La fecha se registrará automáticamente al guardar.'}
         {' · '}{moneda(Number(facturacion.valorFacturado) > 0 ? facturacion.valorFacturado : valor)}
         {' · '}{Number(facturacion.cantidadVisasFacturadas) > 0 ? facturacion.cantidadVisasFacturadas : cantidadIntegrantes} visa{(Number(facturacion.cantidadVisasFacturadas) > 0 ? Number(facturacion.cantidadVisasFacturadas) : Number(cantidadIntegrantes)) === 1 ? '' : 's'}
+        {facturacion.fechaFacturacionInferida ? ' · Fecha asignada por migración inicial' : ''}
       </span>
     </div>}
   </div>;
@@ -2838,8 +3048,8 @@ function Checklist({ tipoSolicitud, documentos, onChange }) {
   </div>;
 }
 
-function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada, cantidadIntegrantes = 1 }) {
-  const facturacionNormalizada = normalizarFacturacion(facturacion, { tipoClienteKey }, config, calculo.totalPesos);
+function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, horaAsesoria, fechaCitaEmbajada, cantidadIntegrantes = 1, requiereEmpresaAfiliada = false }) {
+  const facturacionNormalizada = normalizarFacturacion(facturacion, { tipoClienteKey, requiereEmpresaAfiliada }, config, calculo.totalPesos);
   const descuentoPorcentaje = Number(calculo.porcentajeDescuento) || 0;
   return <section className="panel summary process-summary">
     <h2>Resumen del Proceso</h2>
@@ -2887,10 +3097,13 @@ function Resumen({ calculo, facturacion, tipoClienteKey, config, fechaAsesoria, 
       <strong>Facturación</strong>
       <Line label="Nombre" value={facturacionNormalizada.nombre || 'Pendiente'} />
       <Line label="Ciudad" value={facturacionNormalizada.ciudad || 'Pendiente'} />
+      {requiereEmpresaAfiliada && <Line label="Empresa afiliada" value={facturacionNormalizada.nombreEmpresaAfiliada || 'Pendiente'} />}
       <Line label="Tipo de trámite" value={textoSolicitud(facturacionNormalizada.tipoTramite)} />
       <Line label="Medio de pago" value={facturacionNormalizada.medioPago || 'Pendiente'} />
       <Line label="Facturación" value={facturacionNormalizada.estadoFactura === 'facturada' ? 'Facturada' : 'Por facturar'} />
       {facturacionNormalizada.estadoFactura === 'facturada' && <Line label="Fecha facturación" value={fechaFacturacionLegible(facturacionNormalizada) || 'Pendiente de guardar'} />}
+      {facturacionNormalizada.estadoFactura === 'facturada' && facturacionNormalizada.facturadoPor && <Line label="Registrada por" value={facturacionNormalizada.facturadoPor} />}
+      {facturacionNormalizada.estadoFactura === 'facturada' && facturacionNormalizada.fechaFacturacionInferida && <Line label="Origen de la fecha" value="Migración inicial · 1 de julio de 2026" />}
       <Line label="Valor actual" value={facturacionNormalizada.valor ? moneda(facturacionNormalizada.valor) : 'No aplica'} />
       {facturacionNormalizada.estadoFactura === 'facturada' && <Line label="Valor facturado registrado" value={moneda(Number(facturacionNormalizada.valorFacturado) > 0 ? facturacionNormalizada.valorFacturado : facturacionNormalizada.valor)} />}
     </div>}
@@ -2922,6 +3135,7 @@ function VisasCard({ total, porFacturar, facturadas }) {
   return <div className="card visas-card">
     <span>Total de visas</span>
     <strong>{total}</strong>
+    <small>Acumulado general</small>
     <div className="visas-breakdown">
       <div><span>Por facturar</span><b>{porFacturar}</b></div>
       <div><span>Facturadas</span><b>{facturadas}</b></div>

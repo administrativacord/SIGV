@@ -129,10 +129,75 @@ service cloud.firestore {
         );
     }
 
+
+    function isFacturada(data) {
+      return ('facturacion' in data)
+        && ('estadoFactura' in data.facturacion)
+        && data.facturacion.estadoFactura == 'facturada';
+    }
+
+    function validFacturacionStructure(data) {
+      return !isFacturada(data)
+        || (
+          ('fechaFacturacionIso' in data.facturacion)
+          && data.facturacion.fechaFacturacionIso is string
+          && data.facturacion.fechaFacturacionIso.size() > 0
+          && ('fechaFacturacionMs' in data.facturacion)
+          && data.facturacion.fechaFacturacionMs is number
+          && data.facturacion.fechaFacturacionMs > 0
+          && ('periodoFacturacion' in data.facturacion)
+          && data.facturacion.periodoFacturacion is string
+          && data.facturacion.periodoFacturacion.matches('^[0-9]{4}-[0-9]{2}$')
+          && ('facturadoPor' in data.facturacion)
+          && data.facturacion.facturadoPor is string
+          && data.facturacion.facturadoPor.size() > 0
+          && ('valorFacturado' in data.facturacion)
+          && data.facturacion.valorFacturado is number
+          && data.facturacion.valorFacturado >= 0
+          && ('cantidadVisasFacturadas' in data.facturacion)
+          && data.facturacion.cantidadVisasFacturadas is number
+          && data.facturacion.cantidadVisasFacturadas > 0
+        );
+    }
+
+    function validFacturacionAudit(data) {
+      return validFacturacionStructure(data)
+        && (!isFacturada(data) || data.facturacion.facturadoPor == authEmail());
+    }
+
+    function preservesFacturacionAudit() {
+      return !isFacturada(resource.data)
+        || !isFacturada(request.resource.data)
+        || (
+          request.resource.data.facturacion.fechaFacturacionIso == resource.data.facturacion.fechaFacturacionIso
+          && request.resource.data.facturacion.fechaFacturacionMs == resource.data.facturacion.fechaFacturacionMs
+          && request.resource.data.facturacion.periodoFacturacion == resource.data.facturacion.periodoFacturacion
+          && request.resource.data.facturacion.facturadoPor == resource.data.facturacion.facturadoPor
+          && request.resource.data.facturacion.fechaFacturacionInferida == resource.data.facturacion.fechaFacturacionInferida
+          && request.resource.data.facturacion.origenFechaFacturacion == resource.data.facturacion.origenFechaFacturacion
+          && request.resource.data.facturacion.valorFacturado == resource.data.facturacion.valorFacturado
+          && request.resource.data.facturacion.cantidadVisasFacturadas == resource.data.facturacion.cantidadVisasFacturadas
+        );
+    }
+
+    function validFacturacionUpdate() {
+      return (
+          !isFacturada(resource.data)
+          && isFacturada(request.resource.data)
+          && validFacturacionAudit(request.resource.data)
+        )
+        || (
+          isFacturada(resource.data)
+          && isFacturada(request.resource.data)
+          && preservesFacturacionAudit()
+        )
+        || !isFacturada(request.resource.data);
+    }
+
     match /casos/{casoId} {
       allow read: if activeUser();
-      allow create: if activeAdmin() || (activeUser() && noPriceOverridesOnCreate() && noDiscountOverrideOnCreate());
-      allow update: if activeAdmin() || (activeUser() && preservesPriceOverrides() && preservesDiscountSetting());
+      allow create: if (activeAdmin() && validFacturacionStructure(request.resource.data)) || (activeUser() && noPriceOverridesOnCreate() && noDiscountOverrideOnCreate() && validFacturacionAudit(request.resource.data));
+      allow update: if (activeAdmin() && validFacturacionStructure(request.resource.data)) || (activeUser() && preservesPriceOverrides() && preservesDiscountSetting() && validFacturacionUpdate());
       allow delete: if activeAdmin();
     }
 

@@ -24,7 +24,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.6') errors.push(`La versión esperada es 5.2.6 y se encontró ${pkg.version}`);
+if (pkg.version !== '5.2.9') errors.push(`La versión esperada es 5.2.9 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -34,7 +34,7 @@ for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {
 }
 
 const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
-for (const expected of ['activeAdmin()', 'bootstrapSecurity()', 'primerAdministradorConfigurado', 'allow delete: if activeAdmin()', 'preservesPriceOverrides()', 'noPriceOverridesOnCreate()', 'noDiscountOverrideOnCreate()', 'preservesDiscountSetting()']) {
+for (const expected of ['activeAdmin()', 'bootstrapSecurity()', 'primerAdministradorConfigurado', 'allow delete: if activeAdmin()', 'preservesPriceOverrides()', 'noPriceOverridesOnCreate()', 'noDiscountOverrideOnCreate()', 'preservesDiscountSetting()', 'validFacturacionStructure(data)', 'validFacturacionAudit(data)', 'validFacturacionUpdate()', 'preservesFacturacionAudit()']) {
   if (!rules.includes(expected)) errors.push(`Las reglas no contienen: ${expected}`);
 }
 
@@ -44,7 +44,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C.6 Web · Facturación mensual",
+  "Fase 5C.9 Web · Migración de facturación julio",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -110,6 +110,25 @@ for (const expected of [
   '>Proveniente de meses anteriores<',
   'Ambos indicadores son independientes y no deben sumarse entre sí.',
   'className="invoice-date-note"',
+  'function tipoClienteEsAfiliado',
+  'function hayIntegranteAfiliado',
+  'function facturacionSegunAfiliacion',
+  'nombreEmpresaAfiliada',
+  'requiereEmpresaAfiliada={hayIntegranteAfiliado(integrantes)}',
+  'Field label="Nombre de la empresa afiliada"',
+  'Line label="Empresa afiliada"',
+  'Nombre de la empresa afiliada: ${datos.nombreEmpresaAfiliada}',
+  'const tipoClienteReferencia = actuales[0]?.tipoCliente',
+  'El tipo de cliente o paquete se aplica a toda la asesoría.',
+  'const idsConCambio = lista',
+  'idsConCambio.forEach(integranteId => delete nuevosAjustes[integranteId])',
+  'tipoClienteKey: tipoCliente',
+  'FECHA_MIGRACION_FACTURACION_JULIO_ISO',
+  'function migrarFacturacionInicialJulio',
+  'periodoFacturacion',
+  'facturadoPor',
+  'fechaFacturacionInferida',
+  'Corrección inicial de facturación',
 ]) {
   if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
 }
@@ -157,4 +176,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C.6 aprobada.');
+console.log('Validación SIGV Fase 5C.9 aprobada.');
