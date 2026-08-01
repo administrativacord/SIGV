@@ -18,8 +18,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 5C.11 Web · Filtros por fecha y exportación Excel';
-const BUILD_ID = '2026-07-31-05C11';
+const APP_VERSION = 'Fase 6A.1 Web · Dashboard por periodo y Paquetes Premium pendientes';
+const BUILD_ID = '2026-08-01-06A01';
 const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
 const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
 const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
@@ -873,8 +873,60 @@ function claveMesDesdeClaveFecha(claveFecha = '') {
   return /^\d{4}-\d{2}-\d{2}$/.test(claveFecha) ? claveFecha.slice(0, 7) : '';
 }
 
-function resumenFinancieroMes(casos = [], year, month) {
-  const mesSeleccionado = claveMes(year, month);
+function ultimoDiaMes(year, month) {
+  const dia = new Date(Date.UTC(year, month, 0, 12)).getUTCDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
+function limitesDesdeMes(mes = '') {
+  if (!/^\d{4}-\d{2}$/.test(mes)) return { fechaDesde: '', fechaHasta: '' };
+  const [year, month] = mes.split('-').map(Number);
+  return {
+    fechaDesde: `${mes}-01`,
+    fechaHasta: ultimoDiaMes(year, month),
+  };
+}
+
+function fechaDentroPeriodo(clave = '', fechaDesde = '', fechaHasta = '') {
+  if (!clave) return false;
+  return (!fechaDesde || clave >= fechaDesde) && (!fechaHasta || clave <= fechaHasta);
+}
+
+function etiquetaFechaCorta(clave = '') {
+  const [year, month, day] = String(clave).split('-').map(Number);
+  if (!year || !month || !day) return '';
+  return new Intl.DateTimeFormat('es-CO', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: ZONA_HORARIA_COLOMBIA,
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
+function etiquetaPeriodoDashboard(modoFecha, mesFiltro, fechaDesde, fechaHasta) {
+  if (modoFecha === 'mes' && /^\d{4}-\d{2}$/.test(mesFiltro)) {
+    return etiquetaMes(Number(mesFiltro.slice(0, 4)), Number(mesFiltro.slice(5, 7)));
+  }
+  if (fechaDesde && fechaHasta) return `${etiquetaFechaCorta(fechaDesde)} al ${etiquetaFechaCorta(fechaHasta)}`;
+  if (fechaDesde) return `Desde ${etiquetaFechaCorta(fechaDesde)}`;
+  if (fechaHasta) return `Hasta ${etiquetaFechaCorta(fechaHasta)}`;
+  return 'Todas las fechas';
+}
+
+function tipoClienteEsPremium(tipoCliente = '') {
+  const clave = normalizar(tipoCliente).replace(/[^a-z0-9]/g, '');
+  return ['premiumafiliado', 'premiumnoafiliado', 'paquetepremiumafiliado', 'paquetepremiumnoafiliado'].includes(clave);
+}
+
+function casoPremiumPendiente(caso = {}) {
+  const tipos = normalizarIntegrantes(caso).map(integrante => integrante.tipoCliente || integrante.tipoClienteKey);
+  tipos.push(caso.tipoClienteKey, caso.tipoCliente);
+  const esPremium = tipos.some(tipoClienteEsPremium);
+  const estado = normalizar(caso.estadoManual || caso.estado || '');
+  return esPremium && !estado.includes('finalizado');
+}
+
+function resumenFinancieroPeriodo(casos = [], fechaDesde = '', fechaHasta = '') {
   const resumen = {
     estimadoGenerado: 0,
     facturadoTotal: 0,
@@ -889,12 +941,13 @@ function resumenFinancieroMes(casos = [], year, month) {
   };
 
   for (const caso of casos) {
-    const mesCreacion = claveMesDesdeClaveFecha(claveCreacionCaso(caso));
+    const fechaCreacion = claveCreacionCaso(caso);
+    const creacionEnPeriodo = fechaDentroPeriodo(fechaCreacion, fechaDesde, fechaHasta);
     const cantidadVisas = cantidadVisasEstimadasCaso(caso);
     const valorActual = valorEstimadoCaso(caso);
     const esFacturada = caso.facturacion?.estadoFactura === 'facturada';
 
-    if (mesCreacion === mesSeleccionado) {
+    if (creacionEnPeriodo) {
       resumen.estimadoGenerado += valorActual;
       resumen.visasGeneradas += cantidadVisas;
       if (!esFacturada) {
@@ -904,23 +957,28 @@ function resumenFinancieroMes(casos = [], year, month) {
     }
 
     if (!esFacturada) continue;
-    const mesFactura = mesFacturacionCaso(caso);
-    if (!mesFactura) {
+    const fechaFactura = claveFacturacionCaso(caso);
+    if (!fechaFactura) {
       resumen.facturadasSinFecha += 1;
       continue;
     }
-    if (mesFactura !== mesSeleccionado) continue;
+    if (!fechaDentroPeriodo(fechaFactura, fechaDesde, fechaHasta)) continue;
 
     const valorFacturado = valorFacturadoCaso(caso);
     resumen.facturadoTotal += valorFacturado;
     resumen.visasFacturadas += cantidadVisasFacturadasCaso(caso);
 
-    if (mesCreacion === mesSeleccionado) resumen.facturadoMismoMes += valorFacturado;
-    else if (mesCreacion && mesCreacion < mesSeleccionado) resumen.facturadoMesesAnteriores += valorFacturado;
+    if (creacionEnPeriodo) resumen.facturadoMismoMes += valorFacturado;
+    else if (fechaCreacion && fechaDesde && fechaCreacion < fechaDesde) resumen.facturadoMesesAnteriores += valorFacturado;
     else resumen.facturadoOrigenNoIdentificado += valorFacturado;
   }
 
   return resumen;
+}
+
+function resumenFinancieroMes(casos = [], year, month) {
+  const limites = limitesDesdeMes(claveMes(year, month));
+  return resumenFinancieroPeriodo(casos, limites.fechaDesde, limites.fechaHasta);
 }
 
 function etiquetaMes(year, month) {
@@ -2130,11 +2188,37 @@ function AccesoBloqueado({ perfil, onLogout }) {
 
 function Dashboard({ casos, onOpen }) {
   const hoy = partesFechaColombia(new Date());
-  const [mesVisible, setMesVisible] = useState({ year: hoy.year, month: hoy.month });
-  const pendientes = casos.filter(c => c.estado.includes('Pendiente')).length;
-  const listos = casos.filter(c => c.estado.includes('Pendiente Agendamiento')).length;
-  const agendados = casos.filter(c => c.estado.includes('Asesoría Agendada')).length;
-  const visas = casos.reduce((acc, caso) => {
+  const mesActual = claveMes(hoy.year, hoy.month);
+  const [modoFecha, setModoFecha] = useState('mes');
+  const [mesFiltro, setMesFiltro] = useState(mesActual);
+  const [fechaDesde, setFechaDesde] = useState(`${mesActual}-01`);
+  const [fechaHasta, setFechaHasta] = useState(ultimoDiaMes(hoy.year, hoy.month));
+  const [mesCalendario, setMesCalendario] = useState({ year: hoy.year, month: hoy.month });
+
+  const rangoInvalido = modoFecha === 'rango' && fechaDesde && fechaHasta && fechaDesde > fechaHasta;
+  const mesInvalido = modoFecha === 'mes' && !/^\d{4}-\d{2}$/.test(mesFiltro);
+  const filtroInvalido = rangoInvalido || mesInvalido;
+  const limitesPeriodo = useMemo(() => {
+    if (filtroInvalido) return { fechaDesde: '', fechaHasta: '' };
+    return modoFecha === 'mes'
+      ? limitesDesdeMes(mesFiltro)
+      : { fechaDesde, fechaHasta };
+  }, [modoFecha, mesFiltro, fechaDesde, fechaHasta, filtroInvalido]);
+
+  const casosPeriodo = useMemo(() => {
+    if (filtroInvalido) return [];
+    return casos.filter(caso => fechaDentroPeriodo(
+      claveCreacionCaso(caso),
+      limitesPeriodo.fechaDesde,
+      limitesPeriodo.fechaHasta,
+    ));
+  }, [casos, limitesPeriodo.fechaDesde, limitesPeriodo.fechaHasta, filtroInvalido]);
+
+  const pendientes = casosPeriodo.filter(c => normalizar(c.estado).includes('pendiente')).length;
+  const listos = casosPeriodo.filter(c => normalizar(c.estado).includes('pendiente agendamiento')).length;
+  const agendados = casosPeriodo.filter(c => normalizar(c.estado).includes('asesoria agendada')).length;
+  const premiumPendientes = casosPeriodo.filter(casoPremiumPendiente).length;
+  const visas = casosPeriodo.reduce((acc, caso) => {
     const esFacturada = caso.facturacion?.estadoFactura === 'facturada';
     const cantidad = esFacturada ? cantidadVisasFacturadasCaso(caso) : cantidadVisasCaso(caso);
     acc.total += cantidad;
@@ -2142,133 +2226,249 @@ function Dashboard({ casos, onOpen }) {
     else acc.porFacturar += cantidad;
     return acc;
   }, { total: 0, facturadas: 0, porFacturar: 0 });
-  const recientes = casos.slice(0, 5);
+  const recientes = casosPeriodo.slice(0, 5);
   const financiero = useMemo(
-    () => resumenFinancieroMes(casos, mesVisible.year, mesVisible.month),
-    [casos, mesVisible.year, mesVisible.month],
+    () => filtroInvalido
+      ? resumenFinancieroPeriodo([], '', '')
+      : resumenFinancieroPeriodo(casos, limitesPeriodo.fechaDesde, limitesPeriodo.fechaHasta),
+    [casos, limitesPeriodo.fechaDesde, limitesPeriodo.fechaHasta, filtroInvalido],
   );
+  const etiquetaPeriodo = filtroInvalido
+    ? 'Periodo no válido'
+    : etiquetaPeriodoDashboard(modoFecha, mesFiltro, fechaDesde, fechaHasta);
 
-  function cambiarMes(delta) {
-    const fecha = new Date(mesVisible.year, mesVisible.month - 1 + delta, 1);
-    setMesVisible({ year: fecha.getFullYear(), month: fecha.getMonth() + 1 });
+  useEffect(() => {
+    const mesReferencia = modoFecha === 'mes' ? mesFiltro : (fechaDesde || fechaHasta || mesActual).slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(mesReferencia)) return;
+    setMesCalendario({
+      year: Number(mesReferencia.slice(0, 4)),
+      month: Number(mesReferencia.slice(5, 7)),
+    });
+  }, [modoFecha, mesFiltro, fechaDesde, fechaHasta, mesActual]);
+
+  function moverMes(valor, delta) {
+    const fecha = new Date(valor.year, valor.month - 1 + delta, 1);
+    return { year: fecha.getFullYear(), month: fecha.getMonth() + 1 };
   }
 
-  function irMesActual() {
-    setMesVisible({ year: hoy.year, month: hoy.month });
+  function cambiarMesDashboard(delta) {
+    if (modoFecha === 'mes') {
+      const actual = /^\d{4}-\d{2}$/.test(mesFiltro) ? mesFiltro : mesActual;
+      const [year, month] = actual.split('-').map(Number);
+      const siguiente = moverMes({ year, month }, delta);
+      setMesFiltro(claveMes(siguiente.year, siguiente.month));
+      return;
+    }
+
+    const siguiente = moverMes(mesCalendario, delta);
+    const claveSiguiente = claveMes(siguiente.year, siguiente.month);
+    const mesMinimo = fechaDesde ? fechaDesde.slice(0, 7) : '';
+    const mesMaximo = fechaHasta ? fechaHasta.slice(0, 7) : '';
+    if ((mesMinimo && claveSiguiente < mesMinimo) || (mesMaximo && claveSiguiente > mesMaximo)) return;
+    setMesCalendario(siguiente);
   }
+
+  function irPeriodoActual() {
+    if (modoFecha === 'mes') {
+      setMesFiltro(mesActual);
+      return;
+    }
+    setFechaDesde(`${mesActual}-01`);
+    setFechaHasta(ultimoDiaMes(hoy.year, hoy.month));
+  }
+
+  const claveMesCalendario = claveMes(mesCalendario.year, mesCalendario.month);
+  const deshabilitarAnterior = modoFecha === 'rango' && !!fechaDesde && claveMesCalendario <= fechaDesde.slice(0, 7);
+  const deshabilitarSiguiente = modoFecha === 'rango' && !!fechaHasta && claveMesCalendario >= fechaHasta.slice(0, 7);
 
   return <>
+    <FiltroPeriodoDashboard
+      modoFecha={modoFecha}
+      setModoFecha={setModoFecha}
+      mesFiltro={mesFiltro}
+      setMesFiltro={setMesFiltro}
+      fechaDesde={fechaDesde}
+      setFechaDesde={setFechaDesde}
+      fechaHasta={fechaHasta}
+      setFechaHasta={setFechaHasta}
+      onCurrent={irPeriodoActual}
+      etiquetaPeriodo={etiquetaPeriodo}
+      totalAsesorias={casosPeriodo.length}
+      filtroInvalido={filtroInvalido}
+    />
+
     <section className="grid cards dashboard-operational-cards">
-      <Card title="Asesorías registradas" value={casos.length} />
-      <VisasCard total={visas.total} porFacturar={visas.porFacturar} facturadas={visas.facturadas} />
+      <Card title="Asesorías registradas" value={casosPeriodo.length} />
+      <VisasCard total={visas.total} porFacturar={visas.porFacturar} facturadas={visas.facturadas} subtitulo="Periodo seleccionado" />
       <Card title="Pendientes" value={pendientes} />
       <Card title="Pendientes agendamiento" value={listos} />
       <Card title="Asesorías agendadas" value={agendados} />
+      <Card title="Pendiente Paquete Premium" value={premiumPendientes} />
     </section>
 
-    <ResumenFacturacionMensual
-      resumen={financiero}
-      mesVisible={mesVisible}
-      onPrevious={() => cambiarMes(-1)}
-      onNext={() => cambiarMes(1)}
-      onToday={irMesActual}
-    />
+    <ResumenFacturacionMensual resumen={financiero} etiquetaPeriodo={etiquetaPeriodo} />
 
-    <CalendarioAsesorias casos={casos} onOpen={onOpen} mesVisible={mesVisible} />
+    <CalendarioAsesorias
+      casos={casosPeriodo}
+      onOpen={onOpen}
+      mesVisible={mesCalendario}
+      fechaDesde={limitesPeriodo.fechaDesde}
+      fechaHasta={limitesPeriodo.fechaHasta}
+      etiquetaPeriodo={etiquetaPeriodo}
+      onPrevious={() => cambiarMesDashboard(-1)}
+      onNext={() => cambiarMesDashboard(1)}
+      previousDisabled={deshabilitarAnterior}
+      nextDisabled={deshabilitarSiguiente}
+    />
 
     <section className="panel mt">
       <div className="section-title">
-        <h2>Asesorías recientes</h2>
-        <span>Seguimiento rápido</span>
+        <h2>Asesorías recientes del periodo</h2>
+        <span>{etiquetaPeriodo}</span>
       </div>
       <CaseTable casos={recientes} onOpen={onOpen} compacto />
     </section>
   </>;
 }
 
-function ResumenFacturacionMensual({ resumen, mesVisible, onPrevious, onNext, onToday }) {
-  const tituloMes = etiquetaMes(mesVisible.year, mesVisible.month);
+function FiltroPeriodoDashboard({
+  modoFecha,
+  setModoFecha,
+  mesFiltro,
+  setMesFiltro,
+  fechaDesde,
+  setFechaDesde,
+  fechaHasta,
+  setFechaHasta,
+  onCurrent,
+  etiquetaPeriodo,
+  totalAsesorias,
+  filtroInvalido,
+}) {
+  return <section className="panel dashboard-period-panel">
+    <div className="dashboard-period-header">
+      <div>
+        <h2>Periodo del Dashboard</h2>
+        <p>El periodo seleccionado controla las tarjetas operativas, Total de visas, facturación, calendario y asesorías recientes.</p>
+      </div>
+      <button type="button" className="secondary fit date-quick-button" onClick={onCurrent}>Periodo actual</button>
+    </div>
+
+    <div className="date-filter-modes" role="group" aria-label="Tipo de periodo del Dashboard">
+      <button type="button" className={modoFecha === 'mes' ? 'active' : ''} onClick={() => setModoFecha('mes')}>Mes completo</button>
+      <button type="button" className={modoFecha === 'rango' ? 'active' : ''} onClick={() => setModoFecha('rango')}>Rango de fechas</button>
+    </div>
+
+    {modoFecha === 'mes' && <div className="date-filter-fields month-mode">
+      <label>Mes a consultar
+        <input type="month" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} />
+      </label>
+    </div>}
+
+    {modoFecha === 'rango' && <div className="date-filter-fields">
+      <label>Fecha inicial
+        <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} />
+      </label>
+      <label>Fecha final
+        <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} />
+      </label>
+    </div>}
+
+    <div className={`date-filter-summary${filtroInvalido ? ' invalid' : ''}`}>
+      <strong>{filtroInvalido ? 'El rango seleccionado no es válido' : etiquetaPeriodo}</strong>
+      <span>{filtroInvalido ? 'La fecha inicial no puede ser posterior a la fecha final.' : `${totalAsesorias} asesoría${totalAsesorias === 1 ? '' : 's'} registrada${totalAsesorias === 1 ? '' : 's'} por fecha de creación.`}</span>
+    </div>
+  </section>;
+}
+
+function ResumenFacturacionMensual({ resumen, etiquetaPeriodo }) {
   return <section className="panel mt monthly-finance-panel">
     <div className="monthly-finance-header">
       <div>
-        <h2>Facturación mensual AmCham</h2>
-        <p>Separa el valor generado por fecha de creación del valor facturado por la fecha real en que se marcó la asesoría como facturada.</p>
+        <h2>Facturación del periodo AmCham</h2>
+        <p>El valor generado usa la fecha de creación; el valor facturado usa la fecha real en que la asesoría fue marcada como facturada.</p>
       </div>
-      <div className="calendar-navigation">
-        <button type="button" className="calendar-nav-button" onClick={onPrevious} aria-label="Mes anterior">‹</button>
-        <strong>{tituloMes}</strong>
-        <button type="button" className="calendar-nav-button" onClick={onNext} aria-label="Mes siguiente">›</button>
-        <button type="button" className="secondary fit calendar-today" onClick={onToday}>Hoy</button>
-      </div>
+      <strong className="finance-period-label">{etiquetaPeriodo}</strong>
     </div>
 
     <div className="monthly-finance-grid">
       <article className="finance-metric-card">
         <span>Valor estimado generado</span>
         <strong>{moneda(resumen.estimadoGenerado)}</strong>
-        <small>{resumen.visasGeneradas} visa{resumen.visasGeneradas === 1 ? '' : 's'} creada{resumen.visasGeneradas === 1 ? '' : 's'} en {tituloMes}</small>
+        <small>{resumen.visasGeneradas} visa{resumen.visasGeneradas === 1 ? '' : 's'} creada{resumen.visasGeneradas === 1 ? '' : 's'} en el periodo</small>
       </article>
 
       <article className="finance-metric-card featured">
         <span>Valor facturado</span>
         <strong>{moneda(resumen.facturadoTotal)}</strong>
-        <small>{resumen.visasFacturadas} visa{resumen.visasFacturadas === 1 ? '' : 's'} marcada{resumen.visasFacturadas === 1 ? '' : 's'} como facturada{resumen.visasFacturadas === 1 ? '' : 's'} en {tituloMes}</small>
+        <small>{resumen.visasFacturadas} visa{resumen.visasFacturadas === 1 ? '' : 's'} marcada{resumen.visasFacturadas === 1 ? '' : 's'} como facturada{resumen.visasFacturadas === 1 ? '' : 's'} durante el periodo</small>
         <div className="finance-breakdown">
-          <div><span>Generado y facturado en el mes</span><b>{moneda(resumen.facturadoMismoMes)}</b></div>
-          <div><span>Proveniente de meses anteriores</span><b>{moneda(resumen.facturadoMesesAnteriores)}</b></div>
-          {resumen.facturadoOrigenNoIdentificado > 0 && <div><span>Origen sin fecha identificada</span><b>{moneda(resumen.facturadoOrigenNoIdentificado)}</b></div>}
+          <div><span>Generado y facturado en el periodo</span><b>{moneda(resumen.facturadoMismoMes)}</b></div>
+          <div><span>Proveniente de fechas anteriores</span><b>{moneda(resumen.facturadoMesesAnteriores)}</b></div>
+          {resumen.facturadoOrigenNoIdentificado > 0 && <div><span>Origen fuera del periodo o sin fecha</span><b>{moneda(resumen.facturadoOrigenNoIdentificado)}</b></div>}
         </div>
       </article>
 
       <article className="finance-metric-card pending">
         <span>Pendiente actual por facturar</span>
         <strong>{moneda(resumen.pendienteGenerado)}</strong>
-        <small>{resumen.visasPendientes} visa{resumen.visasPendientes === 1 ? '' : 's'} creada{resumen.visasPendientes === 1 ? '' : 's'} en {tituloMes} que todavía no se ha{resumen.visasPendientes === 1 ? '' : 'n'} facturado</small>
+        <small>{resumen.visasPendientes} visa{resumen.visasPendientes === 1 ? '' : 's'} creada{resumen.visasPendientes === 1 ? '' : 's'} en el periodo que todavía no se ha{resumen.visasPendientes === 1 ? '' : 'n'} facturado</small>
       </article>
     </div>
 
     <div className="monthly-finance-note">
-      <strong>Criterio del reporte:</strong> una asesoría creada en un mes cuenta en el valor estimado de ese mes. Cuando se factura posteriormente, cuenta en el valor facturado del mes en que se marcó como facturada. Ambos indicadores son independientes y no deben sumarse entre sí.
+      <strong>Criterio del reporte:</strong> las tarjetas operativas se filtran por fecha de creación. En facturación, los valores generados se asignan por fecha de creación y los valores facturados por la fecha real de facturación. Los indicadores son independientes y no deben sumarse entre sí.
     </div>
     {resumen.facturadasSinFecha > 0 && <div className="monthly-finance-warning">
-      {resumen.facturadasSinFecha} asesoría{resumen.facturadasSinFecha === 1 ? '' : 's'} antigua{resumen.facturadasSinFecha === 1 ? '' : 's'} aparece{resumen.facturadasSinFecha === 1 ? '' : 'n'} como facturada{resumen.facturadasSinFecha === 1 ? '' : 's'}, pero no tiene{resumen.facturadasSinFecha === 1 ? '' : 'n'} fecha de facturación identificable y no se incluye{resumen.facturadasSinFecha === 1 ? '' : 'n'} en ningún mes.
+      {resumen.facturadasSinFecha} asesoría{resumen.facturadasSinFecha === 1 ? '' : 's'} antigua{resumen.facturadasSinFecha === 1 ? '' : 's'} aparece{resumen.facturadasSinFecha === 1 ? '' : 'n'} como facturada{resumen.facturadasSinFecha === 1 ? '' : 's'}, pero no tiene{resumen.facturadasSinFecha === 1 ? '' : 'n'} fecha de facturación identificable y no se incluye{resumen.facturadasSinFecha === 1 ? '' : 'n'} en el valor facturado del periodo.
     </div>}
   </section>;
 }
 
-function CalendarioAsesorias({ casos, onOpen, mesVisible }) {
+function CalendarioAsesorias({
+  casos,
+  onOpen,
+  mesVisible,
+  fechaDesde = '',
+  fechaHasta = '',
+  etiquetaPeriodo = '',
+  onPrevious,
+  onNext,
+  previousDisabled = false,
+  nextDisabled = false,
+}) {
   const hoy = partesFechaColombia(new Date());
   const [diaSeleccionado, setDiaSeleccionado] = useState('');
 
   useEffect(() => {
     setDiaSeleccionado('');
-  }, [mesVisible.year, mesVisible.month]);
+  }, [mesVisible.year, mesVisible.month, fechaDesde, fechaHasta]);
 
   const asesoriasPorDia = useMemo(() => {
     const mapa = new Map();
     for (const caso of casos) {
       const clave = claveCreacionCaso(caso);
-      if (!clave) continue;
+      if (!clave || !fechaDentroPeriodo(clave, fechaDesde, fechaHasta)) continue;
       if (!mapa.has(clave)) mapa.set(clave, []);
       mapa.get(clave).push(caso);
     }
     for (const lista of mapa.values()) lista.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
     return mapa;
-  }, [casos]);
+  }, [casos, fechaDesde, fechaHasta]);
 
   const actividadPorDia = useMemo(() => {
     const mapa = new Map();
     for (const caso of casos) {
       for (const item of caso.historial || []) {
         const clave = claveFechaEvento(item);
-        if (!clave) continue;
+        if (!clave || !fechaDentroPeriodo(clave, fechaDesde, fechaHasta)) continue;
         if (!mapa.has(clave)) mapa.set(clave, []);
         mapa.get(clave).push({ caso, item });
       }
     }
     for (const lista of mapa.values()) lista.sort((a, b) => marcaTiempoEvento(b.item) - marcaTiempoEvento(a.item));
     return mapa;
-  }, [casos]);
+  }, [casos, fechaDesde, fechaHasta]);
 
   const primerDia = new Date(mesVisible.year, mesVisible.month - 1, 1);
   const totalDias = new Date(mesVisible.year, mesVisible.month, 0).getDate();
@@ -2282,15 +2482,19 @@ function CalendarioAsesorias({ casos, onOpen, mesVisible }) {
   while (celdas.length % 7) celdas.push(null);
 
   const tituloMes = etiquetaMes(mesVisible.year, mesVisible.month);
-
   const creadasSeleccionadas = diaSeleccionado ? asesoriasPorDia.get(diaSeleccionado) || [] : [];
   const actividadSeleccionada = diaSeleccionado ? actividadPorDia.get(diaSeleccionado) || [] : [];
 
   return <section className="panel mt calendar-panel">
     <div className="calendar-header">
       <div>
-        <h2>Calendario mensual de asesorías</h2>
-        <p>{tituloMes}. Cada día muestra únicamente la cantidad de asesorías creadas. Selecciona una fecha para consultar su actividad.</p>
+        <h2>Calendario de asesorías del periodo</h2>
+        <p>{tituloMes}. Se muestran únicamente las fechas incluidas en {etiquetaPeriodo || 'el periodo seleccionado'}.</p>
+      </div>
+      <div className="calendar-navigation">
+        <button type="button" className="calendar-nav-button" onClick={onPrevious} disabled={previousDisabled} aria-label="Mes anterior">‹</button>
+        <strong>{tituloMes}</strong>
+        <button type="button" className="calendar-nav-button" onClick={onNext} disabled={nextDisabled} aria-label="Mes siguiente">›</button>
       </div>
     </div>
 
@@ -2300,15 +2504,17 @@ function CalendarioAsesorias({ casos, onOpen, mesVisible }) {
     <div className="calendar-grid">
       {celdas.map((celda, indice) => {
         if (!celda) return <div className="calendar-cell empty-day" key={`empty-${indice}`} />;
-        const cantidad = (asesoriasPorDia.get(celda.clave) || []).length;
+        const dentroPeriodo = fechaDentroPeriodo(celda.clave, fechaDesde, fechaHasta);
+        const cantidad = dentroPeriodo ? (asesoriasPorDia.get(celda.clave) || []).length : 0;
         const esHoy = celda.clave === hoy.clave;
         const seleccionado = celda.clave === diaSeleccionado;
         return <button
           type="button"
           key={celda.clave}
-          className={`calendar-cell${esHoy ? ' today' : ''}${seleccionado ? ' selected' : ''}`}
-          onClick={() => setDiaSeleccionado(celda.clave)}
-          aria-label={`${celda.day} de ${tituloMes}. ${cantidad} asesorías creadas.`}
+          className={`calendar-cell${esHoy ? ' today' : ''}${seleccionado ? ' selected' : ''}${!dentroPeriodo ? ' outside-period' : ''}`}
+          onClick={() => dentroPeriodo && setDiaSeleccionado(celda.clave)}
+          disabled={!dentroPeriodo}
+          aria-label={`${celda.day} de ${tituloMes}. ${dentroPeriodo ? `${cantidad} asesorías creadas.` : 'Fuera del periodo seleccionado.'}`}
         >
           <span className="calendar-day-number">{celda.day}</span>
           {cantidad > 0 && <span className="calendar-created-count">{cantidad} creada{cantidad === 1 ? '' : 's'}</span>}
@@ -2317,7 +2523,7 @@ function CalendarioAsesorias({ casos, onOpen, mesVisible }) {
     </div>
 
     <div className="calendar-day-detail">
-      {!diaSeleccionado && <div className="empty">Selecciona un día del calendario para ver las asesorías creadas y el historial de actividad.</div>}
+      {!diaSeleccionado && <div className="empty">Selecciona un día habilitado para ver las asesorías creadas y el historial de actividad del periodo.</div>}
       {diaSeleccionado && <>
         <div className="calendar-detail-heading">
           <div>
@@ -3359,11 +3565,11 @@ function Card({ title, value }) {
   return <div className="card"><span>{title}</span><strong>{value}</strong></div>;
 }
 
-function VisasCard({ total, porFacturar, facturadas }) {
+function VisasCard({ total, porFacturar, facturadas, subtitulo = 'Acumulado general' }) {
   return <div className="card visas-card">
     <span>Total de visas</span>
     <strong>{total}</strong>
-    <small>Acumulado general</small>
+    <small>{subtitulo}</small>
     <div className="visas-breakdown">
       <div><span>Por facturar</span><b>{porFacturar}</b></div>
       <div><span>Facturadas</span><b>{facturadas}</b></div>

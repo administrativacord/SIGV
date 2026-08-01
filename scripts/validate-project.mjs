@@ -25,7 +25,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '5.2.11') errors.push(`La versión esperada es 5.2.11 y se encontró ${pkg.version}`);
+if (pkg.version !== '6.0.1') errors.push(`La versión esperada es 6.0.1 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -45,7 +45,7 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 5C.11 Web · Filtros por fecha y exportación Excel",
+  "Fase 6A.1 Web · Dashboard por periodo y Paquetes Premium pendientes",
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -53,7 +53,7 @@ for (const expected of [
   'sidebar-drawer',
   'menu-button',
   'function CalendarioAsesorias',
-  'Calendario mensual de asesorías',
+  'Calendario de asesorías del periodo',
   'calendar-created-count',
   'Historial y actualizaciones del día',
   'Field label="Ciudad"',
@@ -103,13 +103,13 @@ for (const expected of [
   'function valorEstimadoCaso',
   'function resumenFinancieroMes',
   'function ResumenFacturacionMensual',
-  '>Facturación mensual AmCham<',
+  '>Facturación del periodo AmCham<',
   '>Valor estimado generado<',
   '>Valor facturado<',
   '>Pendiente actual por facturar<',
-  '>Generado y facturado en el mes<',
-  '>Proveniente de meses anteriores<',
-  'Ambos indicadores son independientes y no deben sumarse entre sí.',
+  '>Generado y facturado en el periodo<',
+  '>Proveniente de fechas anteriores<',
+  'Los indicadores son independientes y no deben sumarse entre sí.',
   'className="invoice-date-note"',
   'function tipoClienteEsAfiliado',
   'function hayIntegranteAfiliado',
@@ -143,8 +143,19 @@ for (const expected of [
   'descargarLibroXlsx',
   "nombre: 'Asesorías'",
   "nombre: 'Visas'",
+  'function FiltroPeriodoDashboard',
+  '>Periodo del Dashboard<',
+  'El periodo seleccionado controla las tarjetas operativas',
+  'function resumenFinancieroPeriodo',
+  'function fechaDentroPeriodo',
+  'function casoPremiumPendiente',
+  'title="Pendiente Paquete Premium"',
+  'casosPeriodo.filter(casoPremiumPendiente)',
+  'subtitulo="Periodo seleccionado"',
+  'Asesorías recientes del periodo',
+  'outside-period',
 ]) {
-  if (!main.includes(expected)) errors.push(`La Fase 5C no contiene: ${expected}`);
+  if (!main.includes(expected)) errors.push(`La Fase 6A.1 no contiene: ${expected}`);
 }
 
 const styles = readFileSync(resolve(root, 'src/styles.css'), 'utf8');
@@ -179,8 +190,12 @@ for (const expected of [
   '.date-filter-modes',
   '.date-filter-fields',
   '.date-filter-summary',
+  '.dashboard-period-panel',
+  '.dashboard-period-header',
+  '.finance-period-label',
+  '.calendar-cell.outside-period',
 ]) {
-  if (!styles.includes(expected)) errors.push(`Los estilos de Fase 5C no contienen: ${expected}`);
+  if (!styles.includes(expected)) errors.push(`Los estilos de Fase 6A.1 no contienen: ${expected}`);
 }
 
 const processLayoutCount = (main.match(/className="process-layout"/g) || []).length;
@@ -201,4 +216,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 5C.11 aprobada.');
+console.log('Validación SIGV Fase 6A.1 aprobada.');

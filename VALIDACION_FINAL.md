@@ -1,37 +1,37 @@
-# Validación final — Fase 5C.11
+# Validación final — Fase 6A.1
 
-## Funcionalidad validada
+## Resultado
 
-- Filtro de asesorías por todas las fechas.
-- Selección de mes completo mediante `input type="month"`.
-- Selección de rango mediante fecha inicial y fecha final.
-- Validación de rango invertido.
-- Combinación del periodo con búsqueda, estado y tipo de solicitud.
-- El contador y la tabla utilizan el mismo arreglo filtrado.
-- La exportación usa exactamente ese arreglo visible.
-- Libro Excel con hojas **Asesorías** y **Visas**.
-- Una fila por expediente en Asesorías y una fila por integrante en Visas.
-- Formato de moneda, encabezado fijo, anchos de columna y autofiltros.
-- Generación `.xlsx` sin dependencias npm adicionales.
+La versión `6.0.1`, build `2026-08-01-06A01`, fue revisada sobre la base oficial de la Fase 5C.11.
 
-## Pruebas técnicas
+## Comprobaciones aprobadas
 
 - `npm run check`: aprobado.
-- Transpilación de `src/main.jsx` con TypeScript en modo JSX React: aprobada.
-- `node --check src/xlsxExport.js`: aprobado.
-- Archivo `.xlsx` de prueba generado con el módulo interno: aprobado.
-- Integridad ZIP del Excel de prueba: aprobada.
-- Estructura OOXML y dos hojas verificadas: aprobada.
-- Dependencias con versiones exactas: aprobado.
-- ZIP del proyecto sin `node_modules`, `dist` ni `package-lock.json`: aprobado.
+- Análisis sintáctico JSX mediante TypeScript: aprobado, sin errores de sintaxis.
+- Presencia del filtro superior **Periodo del Dashboard**.
+- Modos **Mes completo** y **Rango de fechas**.
+- Aplicación del periodo a todas las tarjetas operativas.
+- Aplicación del periodo al Total de visas y su desglose.
+- Aplicación del periodo al resumen financiero, calendario y asesorías recientes.
+- Nueva tarjeta **Pendiente Paquete Premium**.
+- Lógica Premium validada para `premiumAfiliado`, `premiumNoAfiliado` y sus etiquetas visibles históricas.
+- Exclusión de asesorías cuyo Estado del Proceso sea `Finalizado`.
+- Navegación del calendario limitada al rango seleccionado.
+- Días externos al rango deshabilitados.
+- Reglas de Firestore y lógica de seguridad preservadas.
+- Exportación Excel y filtros del menú Asesorías preservados.
+- Ausencia de `node_modules`, `dist` y `package-lock.json` en el paquete final.
 
-## Base de datos y seguridad
+## Compilación en este entorno
 
-- No se agregan campos ni colecciones.
-- No requiere migración de Firestore.
-- `firestore.rules`, `firebase.js` y `firestoreRest.js` permanecen funcionalmente sin cambios.
-- La exportación se realiza localmente en el navegador con los datos que el usuario ya tiene permiso de consultar.
+La ejecución de `npm install --package-lock=false` no pudo completarse porque el registro npm disponible en el entorno no contenía `firebase@11.10.0`. Por esta limitación externa no se generó `dist`. La sintaxis JSX y el validador interno sí fueron aprobados. En el entorno habitual del proyecto debe ejecutarse:
 
-## Limitación del entorno
+```bash
+npm install --package-lock=false
+npm run check
+npm run build
+```
 
-La compilación final de Vite requiere ejecutar `npm install --package-lock=false` y `npm run build` en un entorno con acceso al registro público de npm.
+## Migraciones
+
+Esta actualización es exclusivamente de interfaz y cálculos del Dashboard. No requiere migración ni cambios en las reglas de Firestore.

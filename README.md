@@ -1,43 +1,70 @@
-# SIGV Web — Fase 5C.11 · Filtros por fecha y exportación Excel
+# SIGV Web — Fase 6A.1 · Dashboard por periodo y Paquetes Premium pendientes
 
-Base oficial: `2.9.10_SIGV_Web_Fase_5C10_Reconciliacion_Visas_Julio.zip`.
+Base oficial: `2.9.11_SIGV_Web_Fase_5C11_Filtros_Fecha_Exportacion_Excel.zip`.
 
-- Versión interna: `5.2.11`
-- Build: `2026-07-31-05C11`
+- Versión interna: `6.0.1`
+- Build: `2026-08-01-06A01`
 
-## Cambios en el menú Asesorías
+## Filtro global del Dashboard
 
-Se incorporó un panel de **Calendario y periodo de consulta** que filtra las asesorías por su fecha de creación.
+Se agregó el panel **Periodo del Dashboard** en la parte superior, antes de las tarjetas operativas.
 
 Modos disponibles:
 
-- **Todas:** conserva el listado completo.
-- **Mes completo:** permite seleccionar cualquier mes mediante el control mensual del navegador.
-- **Rango de fechas:** permite indicar una fecha inicial, una fecha final o un rango abierto por uno de sus extremos.
+- **Mes completo:** permite seleccionar cualquier mes.
+- **Rango de fechas:** permite consultar desde una fecha inicial hasta una fecha final. También admite rangos abiertos por uno de sus extremos.
+- **Periodo actual:** restablece el mes actual o el rango correspondiente al mes actual.
 
-El periodo se combina con los filtros existentes de búsqueda, estado del proceso y tipo de solicitud. La tabla siempre muestra el resultado conjunto de todos los criterios seleccionados.
+El filtro controla conjuntamente:
 
-## Exportación a Excel
+- Asesorías registradas.
+- Total de visas.
+- Visas por facturar y facturadas.
+- Pendientes.
+- Pendientes de agendamiento.
+- Asesorías agendadas.
+- Pendiente Paquete Premium.
+- Resumen financiero.
+- Calendario e historial diario.
+- Asesorías recientes.
 
-El botón **Exportar Excel** genera un archivo `.xlsx` válido con exactamente las asesorías visibles en pantalla. No requiere instalar una librería adicional en el navegador ni agregar nuevas dependencias npm.
+Las tarjetas operativas se filtran por la **fecha de creación de la asesoría**. Los registros sin fecha identificable no se incluyen cuando existe un periodo activo.
 
-El libro contiene dos hojas:
+## Pendiente Paquete Premium
 
-1. **Asesorías:** una fila por expediente, con fecha de creación, asesor, integrantes, cantidad de visas, estado, datos de facturación, subtotal, descuento, total estimado y valor facturado.
-2. **Visas:** una fila por integrante, con sus datos, tipo de cliente, tipo de solicitud, tarifa, precio personalizado, descuento y valor individual estimado.
+Se incorporó una tarjeta nueva al lado de **Asesorías agendadas**.
 
-Los encabezados quedan congelados, las columnas tienen anchos legibles, los importes conservan formato monetario y ambas hojas incluyen autofiltro de Excel.
+Cuenta una asesoría cuando cumple simultáneamente estas condiciones:
 
-## Criterio de fecha
+1. El campo **Tipo de cliente / paquete** corresponde a `Paquete Premium Afiliado` o `Paquete Premium No Afiliado`.
+2. El **Estado del Proceso** todavía no es `Finalizado`.
+3. La asesoría fue creada dentro del mes o rango seleccionado.
 
-El filtro utiliza `createdAtIso` o `createdAtMs`. Para registros históricos utiliza como respaldo el evento de creación del historial. Las asesorías sin una fecha de creación identificable no se incluyen cuando se selecciona un mes o rango, pero sí permanecen disponibles en el modo **Todas**.
+El indicador cuenta asesorías, no la cantidad de integrantes o visas.
+
+## Facturación por periodo
+
+El resumen financiero ahora admite mes completo o rango de fechas, conservando la lógica conciliada de la Fase 5:
+
+- **Valor estimado generado:** usa la fecha de creación.
+- **Valor facturado:** usa la fecha real de facturación.
+- **Generado y facturado en el periodo:** la creación y la facturación ocurrieron dentro del periodo seleccionado.
+- **Proveniente de fechas anteriores:** fue creado antes del periodo y facturado durante el periodo.
+- **Pendiente actual por facturar:** fue creado dentro del periodo y actualmente continúa por facturar.
+
+Esta separación evita mezclar el valor generado con el valor efectivamente facturado.
+
+## Calendario
+
+El calendario muestra un mes a la vez. En modo rango permite navegar únicamente por los meses comprendidos en el rango seleccionado. Los días que quedan fuera del periodo aparecen deshabilitados. Las asesorías creadas y los movimientos del historial mostrados en el detalle diario también respetan el filtro global.
 
 ## Compatibilidad
 
-- No modifica Firestore ni requiere migración de datos.
+- No modifica la estructura de Firestore.
+- No requiere migración de datos.
 - No modifica `firestore.rules`.
-- Conserva la reconciliación de facturación de julio de la Fase 5C.10.
-- Conserva seguridad, roles, calendario del Dashboard, facturación mensual, descuentos, precios personalizados y afiliación grupal.
+- Conserva filtros y exportación Excel del menú Asesorías.
+- Conserva seguridad por roles, precios personalizados, descuentos, afiliación grupal y reconciliación de facturación de julio de 2026.
 - El ZIP no incluye `node_modules`, `dist` ni `package-lock.json`.
 
 ## Publicación
@@ -48,4 +75,4 @@ npm run check
 npm run build
 ```
 
-Para esta actualización no es necesario volver a publicar las reglas de Firestore si ya se publicaron las de la versión anterior.
+No es necesario volver a publicar las reglas de Firestore si ya están desplegadas las de la versión anterior.

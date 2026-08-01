@@ -592,3 +592,63 @@ button.calendar-cell:hover { transform: none; background: #f8fbff; }
   .date-filter-summary span { text-align: left; }
   .date-quick-button { width: 100%; }
 }
+
+/* Fase 6A.1 · Filtro global del Dashboard y seguimiento Premium */
+.dashboard-period-panel {
+  margin-bottom: 18px;
+  border: 1px solid #bfdbfe;
+  background: #f8fbff;
+}
+.dashboard-period-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 15px;
+}
+.dashboard-period-header h2 { margin: 0 0 5px; font-size: 19px; }
+.dashboard-period-header p { max-width: 780px; margin: 0; color: #64748b; line-height: 1.45; }
+.dashboard-operational-cards { grid-template-columns: repeat(6, minmax(135px, 1fr)); }
+.finance-period-label {
+  min-width: 190px;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: #e0ecff;
+  color: #1d4ed8;
+  text-align: center;
+  text-transform: capitalize;
+  font-size: 13px;
+}
+.date-filter-summary.invalid {
+  border-top-color: #fecaca;
+}
+.date-filter-summary.invalid strong,
+.date-filter-summary.invalid span { color: #b91c1c; }
+.calendar-nav-button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+  background: #e2e8f0;
+  color: #64748b;
+}
+.calendar-cell.outside-period,
+.calendar-cell.outside-period:hover {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.calendar-cell.outside-period .calendar-day-number { opacity: .7; }
+
+@media (max-width: 1380px) {
+  .dashboard-operational-cards { grid-template-columns: repeat(3, minmax(160px, 1fr)); }
+}
+
+@media (max-width: 820px) {
+  .dashboard-period-header { flex-direction: column; }
+  .dashboard-period-header .date-quick-button { width: 100%; }
+  .finance-period-label { min-width: 0; width: 100%; }
+}
+
+@media (max-width: 680px) {
+  .dashboard-operational-cards { grid-template-columns: 1fr; }
+}
