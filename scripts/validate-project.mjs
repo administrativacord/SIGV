@@ -25,7 +25,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '6.0.1') errors.push(`La versión esperada es 6.0.1 y se encontró ${pkg.version}`);
+if (pkg.version !== '6.0.2') errors.push(`La versión esperada es 6.0.2 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -35,7 +35,7 @@ for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {
 }
 
 const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
-for (const expected of ['activeAdmin()', 'bootstrapSecurity()', 'primerAdministradorConfigurado', 'allow delete: if activeAdmin()', 'preservesPriceOverrides()', 'noPriceOverridesOnCreate()', 'noDiscountOverrideOnCreate()', 'preservesDiscountSetting()', 'validFacturacionStructure(data)', 'validFacturacionAudit(data)', 'validFacturacionUpdate()', 'preservesFacturacionAudit()']) {
+for (const expected of ['activeAdmin()', 'bootstrapSecurity()', 'primerAdministradorConfigurado', 'allow delete: if activeAdmin()', 'preservesCreationDate()', 'preservesPriceOverrides()', 'noPriceOverridesOnCreate()', 'noDiscountOverrideOnCreate()', 'preservesDiscountSetting()', 'validFacturacionStructure(data)', 'validFacturacionAudit(data)', 'validFacturacionUpdate()', 'preservesFacturacionAudit()']) {
   if (!rules.includes(expected)) errors.push(`Las reglas no contienen: ${expected}`);
 }
 
@@ -45,7 +45,12 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 6A.1 Web · Dashboard por periodo y Paquetes Premium pendientes",
+  "Fase 6A.2 Web · Fecha de creación editable con auditoría",
+  'puedeCambiarFechaCreacion: esAdministrador',
+  'function fechaCreacionDesdeClave',
+  'async function cambiarFechaCreacionCaso',
+  'Cambio de fecha de creación',
+  'className="creation-date-control"',
   'className="process-layout"',
   'className="panel summary process-summary"',
   '>Resumen del Proceso<',
@@ -194,6 +199,7 @@ for (const expected of [
   '.dashboard-period-header',
   '.finance-period-label',
   '.calendar-cell.outside-period',
+  '.creation-date-control',
 ]) {
   if (!styles.includes(expected)) errors.push(`Los estilos de Fase 6A.1 no contienen: ${expected}`);
 }
@@ -216,4 +222,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 6A.1 aprobada.');
+console.log('Validación SIGV Fase 6A.2 aprobada.');

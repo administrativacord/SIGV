@@ -18,8 +18,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 6A.1 Web · Dashboard por periodo y Paquetes Premium pendientes';
-const BUILD_ID = '2026-08-01-06A01';
+const APP_VERSION = 'Fase 6A.2 Web · Fecha de creación editable con auditoría';
+const BUILD_ID = '2026-08-04-06A02';
 const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
 const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
 const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
@@ -130,6 +130,7 @@ function permisosDesdePerfil(perfil) {
     puedeEditarCasos: esAdministrador || esAsesor,
     puedeCambiarEstado: esAdministrador || esAsesor,
     puedeEliminarCasos: esAdministrador,
+    puedeCambiarFechaCreacion: esAdministrador,
     puedeEditarConfiguracion: esAdministrador,
     puedeAgregarAsesoras: esAdministrador,
   };
@@ -534,6 +535,15 @@ function claveCreacionCaso(caso = {}) {
   if (directa) return directa;
   const eventoCreacion = (caso.historial || []).find(item => normalizar(item.tipo) === 'creacion');
   return claveFechaEvento(eventoCreacion);
+}
+
+function fechaCreacionDesdeClave(clave = '') {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clave)) return null;
+  const [year, month, day] = clave.split('-').map(Number);
+  const fecha = new Date(`${clave}T12:00:00-05:00`);
+  if (Number.isNaN(fecha.getTime())) return null;
+  if (fecha.getFullYear() !== year || fecha.getMonth() + 1 !== month || fecha.getDate() !== day) return null;
+  return fecha;
 }
 
 function claveFechaEvento(item = {}) {
@@ -1779,6 +1789,66 @@ function App() {
     }
   }
 
+  async function cambiarFechaCreacionCaso(casoId, fechaNuevaClave) {
+    if (!permisos.puedeCambiarFechaCreacion) {
+      alert('Solo un Administrador activo puede cambiar la fecha de creación.');
+      return false;
+    }
+    const casoAnterior = casos.find(item => item.id === casoId);
+    if (!casoAnterior) {
+      alert('No se encontró la asesoría que deseas actualizar.');
+      return false;
+    }
+    const fechaNueva = fechaCreacionDesdeClave(fechaNuevaClave);
+    const hoy = claveFechaDesdeValor(new Date());
+    if (!fechaNueva) {
+      alert('Selecciona una fecha de creación válida.');
+      return false;
+    }
+    if (fechaNuevaClave > hoy) {
+      alert('La fecha de creación no puede estar en el futuro.');
+      return false;
+    }
+    const fechaAnteriorClave = claveCreacionCaso(casoAnterior);
+    if (fechaNuevaClave === fechaAnteriorClave) {
+      alert('La fecha seleccionada es igual a la fecha de creación actual.');
+      return false;
+    }
+    const usuarioCambio = usuarioAuth?.email || perfil?.email || 'Administrador SIGV';
+    const confirma = window.confirm(`Vas a cambiar la fecha de creación de ${casoId}.\n\nFecha anterior: ${fechaLargaDesdeClave(fechaAnteriorClave)}\nFecha nueva: ${fechaLargaDesdeClave(fechaNuevaClave)}\n\nEste cambio afectará filtros, Dashboard, calendario, métricas y exportaciones. ¿Deseas confirmar?`);
+    if (!confirma) return false;
+
+    const movimiento = {
+      ...evento('Cambio de fecha de creación', `Fecha anterior: ${fechaAnteriorClave || 'no disponible'}. Fecha nueva: ${fechaNuevaClave}. Cambio realizado por ${usuarioCambio}.`, usuarioCambio),
+      fechaAnterior: fechaAnteriorClave || '',
+      fechaNueva: fechaNuevaClave,
+      usuarioCambio,
+    };
+    const actualizado = {
+      ...casoAnterior,
+      createdAtIso: fechaNueva.toISOString(),
+      createdAtMs: fechaNueva.getTime(),
+      actualizadoPor: usuarioCambio,
+      updatedAtIso: new Date().toISOString(),
+      updatedAtMs: Date.now(),
+      historial: [...(casoAnterior.historial || []), movimiento],
+    };
+
+    try {
+      setGuardando(true);
+      await conTiempoLimite(guardarDocumentoRest('casos', casoId, actualizado), 20000, 'Firestore no respondió al cambiar la fecha de creación en 20 segundos.');
+      setCasos(prev => prev.map(item => item.id === casoId ? actualizado : item));
+      setCasoAbiertoId(casoId);
+      return true;
+    } catch (error) {
+      console.error('Error cambiando fecha de creación:', error);
+      alert(`No se pudo cambiar la fecha de creación en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+      return false;
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function guardarConfigFirestore(nuevaConfig) {
     if (!permisos.puedeEditarConfiguracion) {
       alert('Solo el Administrador puede editar la configuración general.');
@@ -2026,7 +2096,7 @@ function App() {
 
       {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} config={config} />}
 
-      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => navegarA('casos')} onSave={actualizarCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
+      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => navegarA('casos')} onSave={actualizarCaso} onChangeCreationDate={cambiarFechaCreacionCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
       {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">La asesoría seleccionada aún se está cargando o no existe.</div>}
 
@@ -3104,13 +3174,19 @@ function CaseTable({ casos, onOpen, compacto = false }) {
   </div>;
 }
 
-function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false, permisos = {} }) {
+function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, config, guardando = false, permisos = {} }) {
   const [edit, setEdit] = useState(() => ({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) }));
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
+  const [fechaCreacionSeleccionada, setFechaCreacionSeleccionada] = useState(() => claveCreacionCaso(caso));
   useEffect(() => {
     setEdit({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) });
     setNuevoSeguimiento('');
+    setFechaCreacionSeleccionada(claveCreacionCaso(caso));
   }, [caso.id]);
+
+  useEffect(() => {
+    setFechaCreacionSeleccionada(claveCreacionCaso(caso));
+  }, [caso.createdAtIso, caso.createdAtMs]);
 
   const integrantes = normalizarIntegrantes(edit);
   const principal = integrantes[0] || crearIntegrante(1);
@@ -3202,6 +3278,28 @@ function DetalleCaso({ caso, onBack, onSave, onDelete, config, guardando = false
           <p>{textoClienteCaso(edit)} · {integrantes.length} integrante{integrantes.length === 1 ? '' : 's'}</p>
         </div>
         <span className={claseEstado(calc.estado)}>{calc.estado}</span>
+      </div>
+      <div className="creation-date-control">
+        <div>
+          <strong>Fecha de creación</strong>
+          <small>Esta fecha alimenta Dashboard, calendario, filtros, métricas y exportación Excel.</small>
+        </div>
+        <label>
+          <span>Fecha registrada</span>
+          <input
+            type="date"
+            value={fechaCreacionSeleccionada}
+            max={claveFechaDesdeValor(new Date())}
+            onChange={e => setFechaCreacionSeleccionada(e.target.value)}
+            disabled={!permisos.puedeCambiarFechaCreacion || guardando}
+          />
+        </label>
+        {permisos.puedeCambiarFechaCreacion
+          ? <button type="button" className="primary fit" disabled={guardando || !fechaCreacionSeleccionada || fechaCreacionSeleccionada === claveCreacionCaso(caso)} onClick={async () => {
+            const guardado = await onChangeCreationDate?.(caso.id, fechaCreacionSeleccionada);
+            if (guardado) alert('Fecha de creación actualizada y registrada en el historial.');
+          }}>{guardando ? 'Guardando...' : 'Confirmar cambio de fecha'}</button>
+          : <small className="hint">Solo un Administrador activo puede modificar esta fecha.</small>}
       </div>
     </section>
 
