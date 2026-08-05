@@ -18,8 +18,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 6A.2 Web · Fecha de creación editable con auditoría';
-const BUILD_ID = '2026-08-04-06A02';
+const APP_VERSION = 'Fase 6B.1 Web · Agenda Google Calendar de solo lectura';
+const BUILD_ID = '2026-08-04-06B01';
 const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
 const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
 const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
@@ -131,6 +131,7 @@ function permisosDesdePerfil(perfil) {
     puedeCambiarEstado: esAdministrador || esAsesor,
     puedeEliminarCasos: esAdministrador,
     puedeCambiarFechaCreacion: esAdministrador,
+    puedeVerAgendaGoogle: esAdministrador,
     puedeEditarConfiguracion: esAdministrador,
     puedeAgregarAsesoras: esAdministrador,
   };
@@ -139,6 +140,7 @@ function permisosDesdePerfil(perfil) {
 function puedeVerVista(vista, permisos) {
   if (!permisos?.activo) return false;
   if (vista === 'configuracion') return permisos.puedeEditarConfiguracion;
+  if (vista === 'agendaGoogle') return permisos.puedeVerAgendaGoogle;
   if (vista === 'nuevoCaso') return permisos.puedeCrearCasos;
   return ['dashboard', 'casos', 'detalleCaso', 'plantillas', 'estadoApp'].includes(vista);
 }
@@ -172,6 +174,7 @@ const configuracionBase = {
   tarifas: tarifasBase,
   costos: costosBase,
   asesoras: asesorasBase,
+  googleCalendar: { clientId: '', calendarId: 'primary' },
 };
 
 function crearFacturacion(tipoTramite = 'primeraVez') {
@@ -462,7 +465,12 @@ function normalizarConfiguracion(config = {}) {
     ? config.asesoras.map(a => String(a || '').trim()).filter(Boolean)
     : asesorasBase;
 
-  return { tarifas, costos, asesoras: asesoras.length ? asesoras : asesorasBase };
+  const googleCalendar = {
+    clientId: String(config.googleCalendar?.clientId || '').trim(),
+    calendarId: String(config.googleCalendar?.calendarId || 'primary').trim() || 'primary',
+  };
+
+  return { tarifas, costos, asesoras: asesoras.length ? asesoras : asesorasBase, googleCalendar };
 }
 
 function inicialFormulario() {
@@ -2045,6 +2053,7 @@ function App() {
     : vista === 'casos' ? 'Asesorías registradas'
     : vista === 'detalleCaso' ? 'Detalle y seguimiento de la asesoría'
     : vista === 'plantillas' ? 'Plantillas y respuestas rápidas'
+    : vista === 'agendaGoogle' ? 'Agenda Google Calendar'
     : vista === 'configuracion' ? 'Configuración'
     : vista === 'estadoApp' ? 'Estado de la app'
     : 'Dashboard';
@@ -2072,6 +2081,7 @@ function App() {
       <button className={vista === 'nuevoCaso' ? 'active' : ''} onClick={() => navegarA('nuevoCaso')}>Nueva asesoría</button>
       <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => navegarA('casos')}>Asesorías</button>
       <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => navegarA('plantillas')}>Plantillas</button>
+      {permisos.puedeVerAgendaGoogle && <button className={vista === 'agendaGoogle' ? 'active' : ''} onClick={() => navegarA('agendaGoogle')}>Agenda Google</button>}
       {permisos.puedeEditarConfiguracion && <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => navegarA('configuracion')}>Configuración</button>}
       <button className={vista === 'estadoApp' ? 'active' : ''} onClick={() => navegarA('estadoApp')}>Estado de la app{errorConexion ? <span className="nav-alert-dot" title="Hay una novedad técnica" /> : null}</button>
       <button onClick={cerrarSesion}>Cerrar sesión</button>
@@ -2101,6 +2111,8 @@ function App() {
       {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">La asesoría seleccionada aún se está cargando o no existe.</div>}
 
       {!cargando && vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
+
+      {!cargando && vista === 'agendaGoogle' && permisos.puedeVerAgendaGoogle && <AgendaGoogleCalendar config={config.googleCalendar} />}
 
       {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} onResetRoles={reiniciarRolesSigv} guardando={guardando} perfilActual={perfil} seguridad={seguridad} onActivateSecurity={activarSeguridadManual} />}
 
@@ -3702,6 +3714,184 @@ function ModalNotificacion({ modal, onClose, onConfirm }) {
   </div>;
 }
 
+let promesaGoogleIdentity = null;
+
+function cargarGoogleIdentity() {
+  if (window.google?.accounts?.oauth2) return Promise.resolve(window.google);
+  if (promesaGoogleIdentity) return promesaGoogleIdentity;
+  promesaGoogleIdentity = new Promise((resolve, reject) => {
+    const existente = document.querySelector('script[data-google-identity="sigv"]');
+    const script = existente || document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleIdentity = 'sigv';
+    script.onload = () => resolve(window.google);
+    script.onerror = () => reject(new Error('No fue posible cargar la autorización segura de Google.'));
+    if (!existente) document.head.appendChild(script);
+  });
+  return promesaGoogleIdentity;
+}
+
+function sumarDiasClave(clave, dias) {
+  const [year, month, day] = clave.split('-').map(Number);
+  const fecha = new Date(Date.UTC(year, month - 1, day + dias, 12));
+  return fecha.toISOString().slice(0, 10);
+}
+
+function esEventoVisaGoogle(eventoGoogle = {}) {
+  const asistentes = (eventoGoogle.attendees || []).map(item => `${item.displayName || ''} ${item.email || ''}`).join(' ');
+  const texto = normalizar(`${eventoGoogle.summary || ''} ${eventoGoogle.description || ''} ${eventoGoogle.location || ''} ${asistentes}`);
+  return ['visa', 'renovacion', 'primera vez', 'ds 160', 'ds160', 'consular', 'embajada', 'global entry'].some(palabra => texto.includes(palabra));
+}
+
+function fechaEventoGoogle(eventoGoogle = {}) {
+  return claveFechaDesdeValor(eventoGoogle.start?.dateTime || eventoGoogle.start?.date);
+}
+
+function horaEventoGoogle(eventoGoogle = {}) {
+  if (eventoGoogle.start?.date && !eventoGoogle.start?.dateTime) return 'Todo el día';
+  const fecha = new Date(eventoGoogle.start?.dateTime || '');
+  if (Number.isNaN(fecha.getTime())) return 'Hora no disponible';
+  return new Intl.DateTimeFormat('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: ZONA_HORARIA_COLOMBIA }).format(fecha);
+}
+
+function AgendaGoogleCalendar({ config = {} }) {
+  const hoy = claveFechaDesdeValor(new Date());
+  const [fechaDesde, setFechaDesde] = useState(hoy);
+  const [fechaHasta, setFechaHasta] = useState(() => sumarDiasClave(hoy, 30));
+  const [eventosGoogle, setEventosGoogle] = useState([]);
+  const [tokenAcceso, setTokenAcceso] = useState('');
+  const [cargandoAgenda, setCargandoAgenda] = useState(false);
+  const [mensajeAgenda, setMensajeAgenda] = useState('Conecta Google Calendar para consultar la agenda del periodo.');
+  const [ultimaConsulta, setUltimaConsulta] = useState('');
+  const clientId = String(config.clientId || '').trim();
+  const calendarId = String(config.calendarId || 'primary').trim() || 'primary';
+
+  async function solicitarToken() {
+    if (tokenAcceso) return tokenAcceso;
+    if (!clientId) throw new Error('Primero registra el ID de cliente OAuth de Google en Configuración.');
+    const google = await cargarGoogleIdentity();
+    return new Promise((resolve, reject) => {
+      const cliente = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/calendar.readonly',
+        callback: respuesta => {
+          if (respuesta?.access_token) {
+            setTokenAcceso(respuesta.access_token);
+            resolve(respuesta.access_token);
+          } else {
+            reject(new Error(respuesta?.error_description || 'Google no entregó autorización de lectura.'));
+          }
+        },
+        error_callback: error => reject(new Error(error?.message || 'La ventana de autorización de Google fue cerrada.')),
+      });
+      cliente.requestAccessToken({ prompt: 'consent' });
+    });
+  }
+
+  async function escanearAgenda() {
+    if (!fechaDesde || !fechaHasta) {
+      setMensajeAgenda('Selecciona la fecha inicial y la fecha final.');
+      return;
+    }
+    if (fechaDesde > fechaHasta) {
+      setMensajeAgenda('La fecha inicial no puede ser posterior a la fecha final.');
+      return;
+    }
+    if ((Date.parse(`${fechaHasta}T12:00:00Z`) - Date.parse(`${fechaDesde}T12:00:00Z`)) / 86400000 > 366) {
+      setMensajeAgenda('El rango máximo permitido es de 366 días.');
+      return;
+    }
+
+    try {
+      setCargandoAgenda(true);
+      setMensajeAgenda('Consultando Google Calendar en modo de solo lectura...');
+      const token = await solicitarToken();
+      const encontrados = [];
+      let pageToken = '';
+      do {
+        const parametros = new URLSearchParams({
+          timeMin: `${fechaDesde}T00:00:00-05:00`,
+          timeMax: `${sumarDiasClave(fechaHasta, 1)}T00:00:00-05:00`,
+          singleEvents: 'true',
+          orderBy: 'startTime',
+          showDeleted: 'false',
+          maxResults: '2500',
+          timeZone: ZONA_HORARIA_COLOMBIA,
+        });
+        if (pageToken) parametros.set('pageToken', pageToken);
+        const respuesta = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${parametros}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (respuesta.status === 401) setTokenAcceso('');
+        if (!respuesta.ok) {
+          const detalle = await respuesta.json().catch(() => ({}));
+          throw new Error(detalle?.error?.message || `Google Calendar respondió con estado ${respuesta.status}.`);
+        }
+        const datos = await respuesta.json();
+        encontrados.push(...(datos.items || []).filter(item => item.status !== 'cancelled'));
+        pageToken = datos.nextPageToken || '';
+      } while (pageToken);
+      setEventosGoogle(encontrados);
+      setUltimaConsulta(fechaColombia(new Date()));
+      setMensajeAgenda(`${encontrados.length} evento${encontrados.length === 1 ? '' : 's'} encontrado${encontrados.length === 1 ? '' : 's'} entre ${fechaDesde} y ${fechaHasta}.`);
+    } catch (error) {
+      console.error('Error consultando Google Calendar:', error);
+      setMensajeAgenda(`No fue posible consultar Google Calendar: ${error.message || 'error desconocido'}`);
+    } finally {
+      setCargandoAgenda(false);
+    }
+  }
+
+  const grupos = eventosGoogle.reduce((mapa, item) => {
+    const clave = fechaEventoGoogle(item) || 'sin-fecha';
+    if (!mapa.has(clave)) mapa.set(clave, []);
+    mapa.get(clave).push(item);
+    return mapa;
+  }, new Map());
+  const eventosVisa = eventosGoogle.filter(esEventoVisaGoogle).length;
+
+  return <div className="google-agenda-stack">
+    <section className="panel google-agenda-filter">
+      <div className="section-title">
+        <div>
+          <h2>Escanear agenda por rango</h2>
+          <p>Consulta eventos programados desde hoy en adelante. SIGV solicita únicamente permiso de lectura y no puede modificar el calendario.</p>
+        </div>
+        <span className="pill ok">Solo lectura</span>
+      </div>
+      {!clientId && <div className="alert-box diagnostic">Falta configurar el ID de cliente OAuth de Google. Regístralo en Configuración → Integración con Google Calendar.</div>}
+      <div className="google-agenda-controls">
+        <label>Desde<input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} /></label>
+        <label>Hasta<input type="date" value={fechaHasta} min={fechaDesde} onChange={e => setFechaHasta(e.target.value)} /></label>
+        <button type="button" className="primary fit" onClick={escanearAgenda} disabled={cargandoAgenda || !clientId}>{cargandoAgenda ? 'Escaneando...' : tokenAcceso ? 'Actualizar eventos' : 'Conectar y escanear'}</button>
+      </div>
+      <p className="hint">{mensajeAgenda}{ultimaConsulta ? ` Última consulta: ${ultimaConsulta}.` : ''}</p>
+    </section>
+
+    <section className="dashboard-operational-cards google-agenda-summary">
+      <Card title="Eventos del rango" value={eventosGoogle.length} />
+      <Card title="Posibles eventos de visa" value={eventosVisa} />
+      <Card title="Requieren revisión" value={eventosGoogle.length - eventosVisa} />
+    </section>
+
+    {[...grupos.entries()].map(([fecha, lista]) => <section className="panel google-agenda-day" key={fecha}>
+      <div className="section-title"><div><h2>{fecha === 'sin-fecha' ? 'Sin fecha identificable' : fechaLargaDesdeClave(fecha)}</h2><p>{lista.length} evento{lista.length === 1 ? '' : 's'}</p></div></div>
+      <div className="google-event-list">{lista.map(item => <article className="google-event-card" key={item.id}>
+        <div className="google-event-time">{horaEventoGoogle(item)}</div>
+        <div>
+          <div className="google-event-heading"><strong>{item.summary || 'Evento sin título'}</strong><span className={esEventoVisaGoogle(item) ? 'pill info' : 'pill warn'}>{esEventoVisaGoogle(item) ? 'Posible visa' : 'Revisar'}</span></div>
+          {item.location && <p><strong>Ubicación:</strong> {item.location}</p>}
+          {item.description && <p className="google-event-description">{item.description}</p>}
+          <small>Organiza: {item.organizer?.displayName || item.organizer?.email || 'No disponible'}{item.attendees?.length ? ` · ${item.attendees.length} invitado${item.attendees.length === 1 ? '' : 's'}` : ''}</small>
+        </div>
+      </article>)}</div>
+    </section>)}
+    {!eventosGoogle.length && <div className="empty">Todavía no hay eventos cargados para mostrar.</div>}
+  </div>;
+}
+
 function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, onResetRoles, guardando = false, perfilActual = null, seguridad = {}, onActivateSecurity }) {
   const [borrador, setBorrador] = useState(() => normalizarConfiguracion(config));
   const [nuevaAsesora, setNuevaAsesora] = useState('');
@@ -3811,6 +4001,25 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
         <p>Los cambios que hagas en esta sección quedan como borrador hasta presionar el botón <strong>Guardar</strong>. Esta será la única manera de aplicar modificaciones de tarifas, valores informativos o asesoras.</p>
       </div>
       <button type="button" className="primary fit" onClick={guardarConfiguracion} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar'}</button>
+    </section>
+
+    <section className="panel google-calendar-config">
+      <div className="section-title">
+        <div>
+          <h2>Integración con Google Calendar</h2>
+          <p>Configuración técnica para consultar eventos. El ID de cliente identifica la aplicación, no es una contraseña.</p>
+        </div>
+        <span className="pill ok">calendar.readonly</span>
+      </div>
+      <div className="two-cols">
+        <label>ID de cliente OAuth 2.0
+          <input value={borrador.googleCalendar?.clientId || ''} onChange={e => setBorrador(prev => normalizarConfiguracion({ ...prev, googleCalendar: { ...prev.googleCalendar, clientId: e.target.value } }))} placeholder="000000000000-xxxxxxxx.apps.googleusercontent.com" />
+        </label>
+        <label>ID del calendario
+          <input value={borrador.googleCalendar?.calendarId || 'primary'} onChange={e => setBorrador(prev => normalizarConfiguracion({ ...prev, googleCalendar: { ...prev.googleCalendar, calendarId: e.target.value } }))} placeholder="primary" />
+        </label>
+      </div>
+      <p className="hint">Usa <strong>primary</strong> para consultar el calendario principal de la cuenta que autoriza el acceso. En Google Cloud debes habilitar Calendar API y registrar el dominio de Vercel como origen JavaScript autorizado.</p>
     </section>
 
     <section className="panel security-panel">

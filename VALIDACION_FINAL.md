@@ -1,8 +1,8 @@
-# Validación final — Fase 6A.2
+# Validación final — Fase 6B.1
 
 ## Resultado
 
-La versión `6.0.2`, build `2026-08-04-06A02`, fue revisada sobre la base oficial de la Fase 6A.1.
+La versión `6.1.0`, build `2026-08-04-06B01`, fue revisada sobre la base oficial de la Fase 6A.2.
 
 ## Comprobaciones aprobadas
 
@@ -15,6 +15,12 @@ La versión `6.0.2`, build `2026-08-04-06A02`, fue revisada sobre la base oficia
 - Actualización conjunta de `createdAtIso` y `createdAtMs`.
 - Auditoría con fecha anterior, fecha nueva, usuario autenticado y momento del cambio.
 - Regla `preservesCreationDate()` para impedir cambios del rol `asesor`.
+- Nuevo módulo Agenda Google exclusivo para Administradores activos.
+- Rango predeterminado desde hoy hasta 30 días adelante y límite de 366 días.
+- Autorización OAuth limitada a `calendar.readonly`.
+- Lectura paginada, recurrencias expandidas y orden por fecha de inicio.
+- Agrupación diaria y clasificación orientativa de posibles eventos de visa.
+- Token temporal mantenido únicamente en memoria.
 - Presencia del filtro superior **Periodo del Dashboard**.
 - Modos **Mes completo** y **Rango de fechas**.
 - Aplicación del periodo a todas las tarjetas operativas.

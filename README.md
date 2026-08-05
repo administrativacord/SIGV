@@ -1,9 +1,27 @@
-# SIGV Web — Fase 6A.2 · Cambio auditado de fecha de creación
+# SIGV Web — Fase 6B.1 · Agenda Google Calendar de solo lectura
 
 Base oficial: `2.9.11_SIGV_Web_Fase_5C11_Filtros_Fecha_Exportacion_Excel.zip`.
 
-- Versión interna: `6.0.2`
-- Build: `2026-08-04-06A02`
+- Versión interna: `6.1.0`
+- Build: `2026-08-04-06B01`
+
+## Agenda Google Calendar
+
+Se agregó un módulo exclusivo para Administradores activos que consulta eventos programados en Google Calendar sin modificarlos. El rango inicial comprende desde el día actual hasta 30 días adelante y puede ajustarse hasta un máximo de 366 días.
+
+Los eventos se solicitan con el alcance OAuth `https://www.googleapis.com/auth/calendar.readonly`, se expanden las recurrencias y se ordenan por hora de inicio. El módulo los agrupa por día y clasifica como posibles visas los títulos, descripciones, ubicaciones o asistentes que contengan términos operativos relacionados con visas.
+
+El token de acceso permanece únicamente en memoria durante la sesión del navegador. SIGV no almacena tokens ni incorpora operaciones para crear, editar o eliminar eventos.
+
+## Configuración inicial de Google
+
+1. En Google Cloud habilita **Google Calendar API**.
+2. Configura la pantalla de consentimiento OAuth.
+3. Crea un **ID de cliente OAuth 2.0** de tipo Aplicación web.
+4. Agrega la dirección publicada en Vercel a **Orígenes JavaScript autorizados**.
+5. En SIGV entra a **Configuración → Integración con Google Calendar** y guarda el ID de cliente.
+6. Conserva `primary` como ID de calendario para leer el calendario principal de la cuenta que autorice el acceso, o registra el ID de un calendario compartido.
+7. Abre **Agenda Google**, selecciona el rango y pulsa **Conectar y escanear**.
 
 ## Cambio de fecha de creación
 
