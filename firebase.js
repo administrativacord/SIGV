@@ -25,7 +25,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '6.0.2') errors.push(`La versión esperada es 6.0.2 y se encontró ${pkg.version}`);
+if (pkg.version !== '6.1.2') errors.push(`La versión esperada es 6.1.2 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -45,7 +45,21 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 6A.2 Web · Fecha de creación editable con auditoría",
+  "Fase 6B.3 Web · Corrección completa de facturación",
+  'fechaFacturacionNueva',
+  "periodoFacturacion: fechaFacturacionNueva.slice(0, 7)",
+  'Fecha de facturación correcta',
+  'puedeCorregirFacturacion: esAdministrador',
+  'async function corregirFacturacionRegistrada',
+  'Corrección de facturación',
+  'casosMesesAnteriores',
+  'Ver asesorías provenientes de fechas anteriores',
+  'className="invoice-correction-control"',
+  'puedeVerAgendaGoogle: esAdministrador',
+  'function AgendaGoogleCalendar',
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'Escanear agenda por rango',
+  "vista === 'agendaGoogle'",
   'puedeCambiarFechaCreacion: esAdministrador',
   'function fechaCreacionDesdeClave',
   'async function cambiarFechaCreacionCaso',
@@ -200,6 +214,10 @@ for (const expected of [
   '.finance-period-label',
   '.calendar-cell.outside-period',
   '.creation-date-control',
+  '.google-agenda-controls',
+  '.google-event-card',
+  '.invoice-correction-control',
+  '.prior-period-invoices',
 ]) {
   if (!styles.includes(expected)) errors.push(`Los estilos de Fase 6A.1 no contienen: ${expected}`);
 }
@@ -222,4 +240,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 6A.2 aprobada.');
+console.log('Validación SIGV Fase 6B.3 aprobada.');

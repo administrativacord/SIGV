@@ -18,8 +18,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 6A.2 Web · Fecha de creación editable con auditoría';
-const BUILD_ID = '2026-08-04-06A02';
+const APP_VERSION = 'Fase 6B.3 Web · Corrección completa de facturación';
+const BUILD_ID = '2026-08-04-06B03';
 const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
 const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
 const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
@@ -131,6 +131,8 @@ function permisosDesdePerfil(perfil) {
     puedeCambiarEstado: esAdministrador || esAsesor,
     puedeEliminarCasos: esAdministrador,
     puedeCambiarFechaCreacion: esAdministrador,
+    puedeCorregirFacturacion: esAdministrador,
+    puedeVerAgendaGoogle: esAdministrador,
     puedeEditarConfiguracion: esAdministrador,
     puedeAgregarAsesoras: esAdministrador,
   };
@@ -139,6 +141,7 @@ function permisosDesdePerfil(perfil) {
 function puedeVerVista(vista, permisos) {
   if (!permisos?.activo) return false;
   if (vista === 'configuracion') return permisos.puedeEditarConfiguracion;
+  if (vista === 'agendaGoogle') return permisos.puedeVerAgendaGoogle;
   if (vista === 'nuevoCaso') return permisos.puedeCrearCasos;
   return ['dashboard', 'casos', 'detalleCaso', 'plantillas', 'estadoApp'].includes(vista);
 }
@@ -172,6 +175,7 @@ const configuracionBase = {
   tarifas: tarifasBase,
   costos: costosBase,
   asesoras: asesorasBase,
+  googleCalendar: { clientId: '', calendarId: 'primary' },
 };
 
 function crearFacturacion(tipoTramite = 'primeraVez') {
@@ -462,7 +466,12 @@ function normalizarConfiguracion(config = {}) {
     ? config.asesoras.map(a => String(a || '').trim()).filter(Boolean)
     : asesorasBase;
 
-  return { tarifas, costos, asesoras: asesoras.length ? asesoras : asesorasBase };
+  const googleCalendar = {
+    clientId: String(config.googleCalendar?.clientId || '').trim(),
+    calendarId: String(config.googleCalendar?.calendarId || 'primary').trim() || 'primary',
+  };
+
+  return { tarifas, costos, asesoras: asesoras.length ? asesoras : asesorasBase, googleCalendar };
 }
 
 function inicialFormulario() {
@@ -942,6 +951,8 @@ function resumenFinancieroPeriodo(casos = [], fechaDesde = '', fechaHasta = '') 
     facturadoTotal: 0,
     facturadoMismoMes: 0,
     facturadoMesesAnteriores: 0,
+    visasMesesAnteriores: 0,
+    casosMesesAnteriores: [],
     facturadoOrigenNoIdentificado: 0,
     pendienteGenerado: 0,
     visasGeneradas: 0,
@@ -979,7 +990,19 @@ function resumenFinancieroPeriodo(casos = [], fechaDesde = '', fechaHasta = '') 
     resumen.visasFacturadas += cantidadVisasFacturadasCaso(caso);
 
     if (creacionEnPeriodo) resumen.facturadoMismoMes += valorFacturado;
-    else if (fechaCreacion && fechaDesde && fechaCreacion < fechaDesde) resumen.facturadoMesesAnteriores += valorFacturado;
+    else if (fechaCreacion && fechaDesde && fechaCreacion < fechaDesde) {
+      const cantidadFacturada = cantidadVisasFacturadasCaso(caso);
+      resumen.facturadoMesesAnteriores += valorFacturado;
+      resumen.visasMesesAnteriores += cantidadFacturada;
+      resumen.casosMesesAnteriores.push({
+        id: caso.id,
+        nombre: textoClienteCaso(caso),
+        fechaCreacion,
+        fechaFactura,
+        valorFacturado,
+        cantidadVisas: cantidadFacturada,
+      });
+    }
     else resumen.facturadoOrigenNoIdentificado += valorFacturado;
   }
 
@@ -1849,6 +1872,91 @@ function App() {
     }
   }
 
+  async function corregirFacturacionRegistrada(casoId, { valorFacturadoNuevo, tipoTramiteNuevo, fechaFacturacionNueva }) {
+    if (!permisos.puedeCorregirFacturacion) {
+      alert('Solo un Administrador activo puede corregir una facturación registrada.');
+      return false;
+    }
+    const casoAnterior = casos.find(item => item.id === casoId);
+    if (!casoAnterior || casoAnterior.facturacion?.estadoFactura !== 'facturada') {
+      alert('La asesoría no tiene una facturación registrada que pueda corregirse.');
+      return false;
+    }
+    const valorNuevo = Number(valorFacturadoNuevo);
+    if (!Number.isFinite(valorNuevo) || valorNuevo <= 0) {
+      alert('Ingresa un valor facturado válido mayor que cero.');
+      return false;
+    }
+    if (!tiposSolicitud.some(item => item.id === tipoTramiteNuevo)) {
+      alert('Selecciona un tipo de trámite válido.');
+      return false;
+    }
+    const fechaNueva = fechaCreacionDesdeClave(fechaFacturacionNueva);
+    if (!fechaNueva) {
+      alert('Selecciona una fecha de facturación válida.');
+      return false;
+    }
+    if (fechaFacturacionNueva > claveFechaDesdeValor(new Date())) {
+      alert('La fecha de facturación no puede estar en el futuro.');
+      return false;
+    }
+    const valorAnterior = valorFacturadoCaso(casoAnterior);
+    const tipoAnterior = casoAnterior.facturacion?.tipoTramite || casoAnterior.tipoSolicitudKey || 'primeraVez';
+    const fechaAnterior = claveFacturacionCaso(casoAnterior);
+    if (valorNuevo === valorAnterior && tipoTramiteNuevo === tipoAnterior && fechaFacturacionNueva === fechaAnterior) {
+      alert('No hay cambios para guardar en la facturación registrada.');
+      return false;
+    }
+    const usuarioCambio = usuarioAuth?.email || perfil?.email || 'Administrador SIGV';
+    const confirma = window.confirm(`Vas a corregir una facturación histórica de ${casoId}.\n\nValor anterior: ${moneda(valorAnterior)}\nValor nuevo: ${moneda(valorNuevo)}\nTipo anterior: ${textoSolicitud(tipoAnterior)}\nTipo nuevo: ${textoSolicitud(tipoTramiteNuevo)}\nFecha anterior: ${fechaAnterior || 'no disponible'}\nFecha nueva: ${fechaFacturacionNueva}\n\nEste cambio afectará las métricas del periodo correspondiente. ¿Deseas confirmar?`);
+    if (!confirma) return false;
+
+    const movimiento = {
+      ...evento('Corrección de facturación', `Valor facturado anterior: ${moneda(valorAnterior)}. Valor facturado nuevo: ${moneda(valorNuevo)}. Tipo de trámite anterior: ${textoSolicitud(tipoAnterior)}. Tipo nuevo: ${textoSolicitud(tipoTramiteNuevo)}. Fecha de facturación anterior: ${fechaAnterior || 'no disponible'}. Fecha nueva: ${fechaFacturacionNueva}. Corrección realizada por ${usuarioCambio}.`, usuarioCambio),
+      valorFacturadoAnterior: valorAnterior,
+      valorFacturadoNuevo: valorNuevo,
+      tipoTramiteAnterior: tipoAnterior,
+      tipoTramiteNuevo,
+      fechaFacturacionAnterior: fechaAnterior || '',
+      fechaFacturacionNueva,
+      usuarioCambio,
+    };
+    const actualizado = {
+      ...casoAnterior,
+      facturacion: {
+        ...casoAnterior.facturacion,
+        valorFacturado: valorNuevo,
+        tipoTramite: tipoTramiteNuevo,
+        fechaFacturacionIso: fechaNueva.toISOString(),
+        fechaFacturacionMs: fechaNueva.getTime(),
+        periodoFacturacion: fechaFacturacionNueva.slice(0, 7),
+        fechaFacturacionInferida: false,
+        origenFechaFacturacion: 'Fecha corregida por Administrador con registro de auditoría.',
+        corregidoPor: usuarioCambio,
+        corregidoAtIso: new Date().toISOString(),
+        corregidoAtMs: Date.now(),
+      },
+      actualizadoPor: usuarioCambio,
+      updatedAtIso: new Date().toISOString(),
+      updatedAtMs: Date.now(),
+      historial: [...(casoAnterior.historial || []), movimiento],
+    };
+
+    try {
+      setGuardando(true);
+      await conTiempoLimite(guardarDocumentoRest('casos', casoId, actualizado), 20000, 'Firestore no respondió al corregir la facturación en 20 segundos.');
+      setCasos(prev => prev.map(item => item.id === casoId ? actualizado : item));
+      setCasoAbiertoId(casoId);
+      return true;
+    } catch (error) {
+      console.error('Error corrigiendo facturación registrada:', error);
+      alert(`No se pudo corregir la facturación en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+      return false;
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function guardarConfigFirestore(nuevaConfig) {
     if (!permisos.puedeEditarConfiguracion) {
       alert('Solo el Administrador puede editar la configuración general.');
@@ -2045,6 +2153,7 @@ function App() {
     : vista === 'casos' ? 'Asesorías registradas'
     : vista === 'detalleCaso' ? 'Detalle y seguimiento de la asesoría'
     : vista === 'plantillas' ? 'Plantillas y respuestas rápidas'
+    : vista === 'agendaGoogle' ? 'Agenda Google Calendar'
     : vista === 'configuracion' ? 'Configuración'
     : vista === 'estadoApp' ? 'Estado de la app'
     : 'Dashboard';
@@ -2072,6 +2181,7 @@ function App() {
       <button className={vista === 'nuevoCaso' ? 'active' : ''} onClick={() => navegarA('nuevoCaso')}>Nueva asesoría</button>
       <button className={vista === 'casos' || vista === 'detalleCaso' ? 'active' : ''} onClick={() => navegarA('casos')}>Asesorías</button>
       <button className={vista === 'plantillas' ? 'active' : ''} onClick={() => navegarA('plantillas')}>Plantillas</button>
+      {permisos.puedeVerAgendaGoogle && <button className={vista === 'agendaGoogle' ? 'active' : ''} onClick={() => navegarA('agendaGoogle')}>Agenda Google</button>}
       {permisos.puedeEditarConfiguracion && <button className={vista === 'configuracion' ? 'active' : ''} onClick={() => navegarA('configuracion')}>Configuración</button>}
       <button className={vista === 'estadoApp' ? 'active' : ''} onClick={() => navegarA('estadoApp')}>Estado de la app{errorConexion ? <span className="nav-alert-dot" title="Hay una novedad técnica" /> : null}</button>
       <button onClick={cerrarSesion}>Cerrar sesión</button>
@@ -2096,11 +2206,13 @@ function App() {
 
       {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} config={config} />}
 
-      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => navegarA('casos')} onSave={actualizarCaso} onChangeCreationDate={cambiarFechaCreacionCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
+      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => navegarA('casos')} onSave={actualizarCaso} onChangeCreationDate={cambiarFechaCreacionCaso} onCorrectInvoice={corregirFacturacionRegistrada} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
       {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">La asesoría seleccionada aún se está cargando o no existe.</div>}
 
       {!cargando && vista === 'plantillas' && <Plantillas casos={casos} onOpen={abrirCaso} />}
+
+      {!cargando && vista === 'agendaGoogle' && permisos.puedeVerAgendaGoogle && <AgendaGoogleCalendar config={config.googleCalendar} />}
 
       {!cargando && vista === 'configuracion' && permisos.puedeEditarConfiguracion && <Configuracion config={config} setConfig={guardarConfigFirestore} usuariosSigv={usuariosSigv} onSaveUsuario={guardarUsuarioSigv} onResetRoles={reiniciarRolesSigv} guardando={guardando} perfilActual={perfil} seguridad={seguridad} onActivateSecurity={activarSeguridadManual} />}
 
@@ -2376,7 +2488,7 @@ function Dashboard({ casos, onOpen }) {
       <Card title="Pendiente Paquete Premium" value={premiumPendientes} />
     </section>
 
-    <ResumenFacturacionMensual resumen={financiero} etiquetaPeriodo={etiquetaPeriodo} />
+    <ResumenFacturacionMensual resumen={financiero} etiquetaPeriodo={etiquetaPeriodo} onOpen={onOpen} />
 
     <CalendarioAsesorias
       casos={casosPeriodo}
@@ -2451,7 +2563,7 @@ function FiltroPeriodoDashboard({
   </section>;
 }
 
-function ResumenFacturacionMensual({ resumen, etiquetaPeriodo }) {
+function ResumenFacturacionMensual({ resumen, etiquetaPeriodo, onOpen }) {
   return <section className="panel mt monthly-finance-panel">
     <div className="monthly-finance-header">
       <div>
@@ -2485,6 +2597,23 @@ function ResumenFacturacionMensual({ resumen, etiquetaPeriodo }) {
         <small>{resumen.visasPendientes} visa{resumen.visasPendientes === 1 ? '' : 's'} creada{resumen.visasPendientes === 1 ? '' : 's'} en el periodo que todavía no se ha{resumen.visasPendientes === 1 ? '' : 'n'} facturado</small>
       </article>
     </div>
+
+    {resumen.casosMesesAnteriores.length > 0 && <details className="prior-period-invoices">
+      <summary>
+        <span>Ver asesorías provenientes de fechas anteriores</span>
+        <strong>{resumen.casosMesesAnteriores.length} asesoría{resumen.casosMesesAnteriores.length === 1 ? '' : 's'} · {resumen.visasMesesAnteriores} visa{resumen.visasMesesAnteriores === 1 ? '' : 's'}</strong>
+      </summary>
+      <div className="prior-period-invoice-list">
+        {resumen.casosMesesAnteriores.map(item => <article key={item.id} className="prior-period-invoice-item">
+          <div>
+            <strong>{item.id} · {item.nombre}</strong>
+            <small>Creada: {etiquetaFechaCorta(item.fechaCreacion)} · Facturada: {etiquetaFechaCorta(item.fechaFactura)} · {item.cantidadVisas} visa{item.cantidadVisas === 1 ? '' : 's'}</small>
+          </div>
+          <b>{moneda(item.valorFacturado)}</b>
+          <button type="button" className="small-btn" onClick={() => onOpen?.(item.id)}>Abrir</button>
+        </article>)}
+      </div>
+    </details>}
 
     <div className="monthly-finance-note">
       <strong>Criterio del reporte:</strong> las tarjetas operativas se filtran por fecha de creación. En facturación, los valores generados se asignan por fecha de creación y los valores facturados por la fecha real de facturación. Los indicadores son independientes y no deben sumarse entre sí.
@@ -3174,15 +3303,25 @@ function CaseTable({ casos, onOpen, compacto = false }) {
   </div>;
 }
 
-function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, config, guardando = false, permisos = {} }) {
+function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onCorrectInvoice, onDelete, config, guardando = false, permisos = {} }) {
   const [edit, setEdit] = useState(() => ({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) }));
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
   const [fechaCreacionSeleccionada, setFechaCreacionSeleccionada] = useState(() => claveCreacionCaso(caso));
+  const [correccionFactura, setCorreccionFactura] = useState(() => ({
+    valor: valorFacturadoCaso(caso),
+    tipoTramite: caso.facturacion?.tipoTramite || caso.tipoSolicitudKey || 'primeraVez',
+    fechaFacturacion: claveFacturacionCaso(caso),
+  }));
   useEffect(() => {
     setEdit({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) });
     setNuevoSeguimiento('');
     setFechaCreacionSeleccionada(claveCreacionCaso(caso));
-  }, [caso.id]);
+    setCorreccionFactura({
+      valor: valorFacturadoCaso(caso),
+      tipoTramite: caso.facturacion?.tipoTramite || caso.tipoSolicitudKey || 'primeraVez',
+      fechaFacturacion: claveFacturacionCaso(caso),
+    });
+  }, [caso.id, caso.updatedAtMs]);
 
   useEffect(() => {
     setFechaCreacionSeleccionada(claveCreacionCaso(caso));
@@ -3280,12 +3419,8 @@ function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, con
         <span className={claseEstado(calc.estado)}>{calc.estado}</span>
       </div>
       <div className="creation-date-control">
-        <div>
-          <strong>Fecha de creación</strong>
-          <small>Esta fecha alimenta Dashboard, calendario, filtros, métricas y exportación Excel.</small>
-        </div>
-        <label>
-          <span>Fecha registrada</span>
+        <strong title="Esta fecha alimenta Dashboard, calendario, filtros, métricas y exportación Excel.">Fecha de creación</strong>
+        <label title="Fecha registrada para esta asesoría">
           <input
             type="date"
             value={fechaCreacionSeleccionada}
@@ -3295,11 +3430,11 @@ function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, con
           />
         </label>
         {permisos.puedeCambiarFechaCreacion
-          ? <button type="button" className="primary fit" disabled={guardando || !fechaCreacionSeleccionada || fechaCreacionSeleccionada === claveCreacionCaso(caso)} onClick={async () => {
+          ? <button type="button" className="small-btn" disabled={guardando || !fechaCreacionSeleccionada || fechaCreacionSeleccionada === claveCreacionCaso(caso)} onClick={async () => {
             const guardado = await onChangeCreationDate?.(caso.id, fechaCreacionSeleccionada);
             if (guardado) alert('Fecha de creación actualizada y registrada en el historial.');
-          }}>{guardando ? 'Guardando...' : 'Confirmar cambio de fecha'}</button>
-          : <small className="hint">Solo un Administrador activo puede modificar esta fecha.</small>}
+          }}>{guardando ? 'Guardando...' : 'Cambiar fecha'}</button>
+          : <span className="hint" title="Solo un Administrador activo puede modificar esta fecha.">Solo lectura</span>}
       </div>
     </section>
 
@@ -3351,6 +3486,29 @@ function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, con
           descuentoCantidadHabilitado={calc.aplicarDescuentoCantidad}
           requiereEmpresaAfiliada={hayIntegranteAfiliado(integrantes)}
         />
+        {edit.facturacion?.estadoFactura === 'facturada' && permisos.puedeCorregirFacturacion && <details className="invoice-correction-control">
+          <summary>Corregir facturación registrada</summary>
+          <div className="invoice-correction-content">
+            <p className="hint">Uso exclusivo para corregir datos históricos confirmados. El valor, tipo y fecha anteriores quedan registrados en auditoría.</p>
+            <div className="two-cols">
+              <label>Valor facturado correcto
+                <input type="number" min="1" step="1" value={correccionFactura.valor} onChange={e => setCorreccionFactura(prev => ({ ...prev, valor: e.target.value }))} />
+              </label>
+              <label>Tipo de trámite facturado
+                <select value={correccionFactura.tipoTramite} onChange={e => setCorreccionFactura(prev => ({ ...prev, tipoTramite: e.target.value }))}>
+                  {tiposSolicitud.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+              </label>
+              <label>Fecha de facturación correcta
+                <input type="date" max={claveFechaDesdeValor(new Date())} value={correccionFactura.fechaFacturacion} onChange={e => setCorreccionFactura(prev => ({ ...prev, fechaFacturacion: e.target.value }))} />
+              </label>
+            </div>
+            <button type="button" className="primary fit" disabled={guardando} onClick={async () => {
+              const corregido = await onCorrectInvoice?.(caso.id, { valorFacturadoNuevo: correccionFactura.valor, tipoTramiteNuevo: correccionFactura.tipoTramite, fechaFacturacionNueva: correccionFactura.fechaFacturacion });
+              if (corregido) alert('Facturación corregida y registrada en el historial.');
+            }}>{guardando ? 'Guardando...' : 'Confirmar corrección facturada'}</button>
+          </div>
+        </details>}
 
         <h2>7. Fecha Cita embajada</h2>
         <label>Fecha Cita embajada
@@ -3702,6 +3860,184 @@ function ModalNotificacion({ modal, onClose, onConfirm }) {
   </div>;
 }
 
+let promesaGoogleIdentity = null;
+
+function cargarGoogleIdentity() {
+  if (window.google?.accounts?.oauth2) return Promise.resolve(window.google);
+  if (promesaGoogleIdentity) return promesaGoogleIdentity;
+  promesaGoogleIdentity = new Promise((resolve, reject) => {
+    const existente = document.querySelector('script[data-google-identity="sigv"]');
+    const script = existente || document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleIdentity = 'sigv';
+    script.onload = () => resolve(window.google);
+    script.onerror = () => reject(new Error('No fue posible cargar la autorización segura de Google.'));
+    if (!existente) document.head.appendChild(script);
+  });
+  return promesaGoogleIdentity;
+}
+
+function sumarDiasClave(clave, dias) {
+  const [year, month, day] = clave.split('-').map(Number);
+  const fecha = new Date(Date.UTC(year, month - 1, day + dias, 12));
+  return fecha.toISOString().slice(0, 10);
+}
+
+function esEventoVisaGoogle(eventoGoogle = {}) {
+  const asistentes = (eventoGoogle.attendees || []).map(item => `${item.displayName || ''} ${item.email || ''}`).join(' ');
+  const texto = normalizar(`${eventoGoogle.summary || ''} ${eventoGoogle.description || ''} ${eventoGoogle.location || ''} ${asistentes}`);
+  return ['visa', 'renovacion', 'primera vez', 'ds 160', 'ds160', 'consular', 'embajada', 'global entry'].some(palabra => texto.includes(palabra));
+}
+
+function fechaEventoGoogle(eventoGoogle = {}) {
+  return claveFechaDesdeValor(eventoGoogle.start?.dateTime || eventoGoogle.start?.date);
+}
+
+function horaEventoGoogle(eventoGoogle = {}) {
+  if (eventoGoogle.start?.date && !eventoGoogle.start?.dateTime) return 'Todo el día';
+  const fecha = new Date(eventoGoogle.start?.dateTime || '');
+  if (Number.isNaN(fecha.getTime())) return 'Hora no disponible';
+  return new Intl.DateTimeFormat('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: ZONA_HORARIA_COLOMBIA }).format(fecha);
+}
+
+function AgendaGoogleCalendar({ config = {} }) {
+  const hoy = claveFechaDesdeValor(new Date());
+  const [fechaDesde, setFechaDesde] = useState(hoy);
+  const [fechaHasta, setFechaHasta] = useState(() => sumarDiasClave(hoy, 30));
+  const [eventosGoogle, setEventosGoogle] = useState([]);
+  const [tokenAcceso, setTokenAcceso] = useState('');
+  const [cargandoAgenda, setCargandoAgenda] = useState(false);
+  const [mensajeAgenda, setMensajeAgenda] = useState('Conecta Google Calendar para consultar la agenda del periodo.');
+  const [ultimaConsulta, setUltimaConsulta] = useState('');
+  const clientId = String(config.clientId || '').trim();
+  const calendarId = String(config.calendarId || 'primary').trim() || 'primary';
+
+  async function solicitarToken() {
+    if (tokenAcceso) return tokenAcceso;
+    if (!clientId) throw new Error('Primero registra el ID de cliente OAuth de Google en Configuración.');
+    const google = await cargarGoogleIdentity();
+    return new Promise((resolve, reject) => {
+      const cliente = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/calendar.readonly',
+        callback: respuesta => {
+          if (respuesta?.access_token) {
+            setTokenAcceso(respuesta.access_token);
+            resolve(respuesta.access_token);
+          } else {
+            reject(new Error(respuesta?.error_description || 'Google no entregó autorización de lectura.'));
+          }
+        },
+        error_callback: error => reject(new Error(error?.message || 'La ventana de autorización de Google fue cerrada.')),
+      });
+      cliente.requestAccessToken({ prompt: 'consent' });
+    });
+  }
+
+  async function escanearAgenda() {
+    if (!fechaDesde || !fechaHasta) {
+      setMensajeAgenda('Selecciona la fecha inicial y la fecha final.');
+      return;
+    }
+    if (fechaDesde > fechaHasta) {
+      setMensajeAgenda('La fecha inicial no puede ser posterior a la fecha final.');
+      return;
+    }
+    if ((Date.parse(`${fechaHasta}T12:00:00Z`) - Date.parse(`${fechaDesde}T12:00:00Z`)) / 86400000 > 366) {
+      setMensajeAgenda('El rango máximo permitido es de 366 días.');
+      return;
+    }
+
+    try {
+      setCargandoAgenda(true);
+      setMensajeAgenda('Consultando Google Calendar en modo de solo lectura...');
+      const token = await solicitarToken();
+      const encontrados = [];
+      let pageToken = '';
+      do {
+        const parametros = new URLSearchParams({
+          timeMin: `${fechaDesde}T00:00:00-05:00`,
+          timeMax: `${sumarDiasClave(fechaHasta, 1)}T00:00:00-05:00`,
+          singleEvents: 'true',
+          orderBy: 'startTime',
+          showDeleted: 'false',
+          maxResults: '2500',
+          timeZone: ZONA_HORARIA_COLOMBIA,
+        });
+        if (pageToken) parametros.set('pageToken', pageToken);
+        const respuesta = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${parametros}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (respuesta.status === 401) setTokenAcceso('');
+        if (!respuesta.ok) {
+          const detalle = await respuesta.json().catch(() => ({}));
+          throw new Error(detalle?.error?.message || `Google Calendar respondió con estado ${respuesta.status}.`);
+        }
+        const datos = await respuesta.json();
+        encontrados.push(...(datos.items || []).filter(item => item.status !== 'cancelled'));
+        pageToken = datos.nextPageToken || '';
+      } while (pageToken);
+      setEventosGoogle(encontrados);
+      setUltimaConsulta(fechaColombia(new Date()));
+      setMensajeAgenda(`${encontrados.length} evento${encontrados.length === 1 ? '' : 's'} encontrado${encontrados.length === 1 ? '' : 's'} entre ${fechaDesde} y ${fechaHasta}.`);
+    } catch (error) {
+      console.error('Error consultando Google Calendar:', error);
+      setMensajeAgenda(`No fue posible consultar Google Calendar: ${error.message || 'error desconocido'}`);
+    } finally {
+      setCargandoAgenda(false);
+    }
+  }
+
+  const grupos = eventosGoogle.reduce((mapa, item) => {
+    const clave = fechaEventoGoogle(item) || 'sin-fecha';
+    if (!mapa.has(clave)) mapa.set(clave, []);
+    mapa.get(clave).push(item);
+    return mapa;
+  }, new Map());
+  const eventosVisa = eventosGoogle.filter(esEventoVisaGoogle).length;
+
+  return <div className="google-agenda-stack">
+    <section className="panel google-agenda-filter">
+      <div className="section-title">
+        <div>
+          <h2>Escanear agenda por rango</h2>
+          <p>Consulta eventos programados desde hoy en adelante. SIGV solicita únicamente permiso de lectura y no puede modificar el calendario.</p>
+        </div>
+        <span className="pill ok">Solo lectura</span>
+      </div>
+      {!clientId && <div className="alert-box diagnostic">Falta configurar el ID de cliente OAuth de Google. Regístralo en Configuración → Integración con Google Calendar.</div>}
+      <div className="google-agenda-controls">
+        <label>Desde<input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} /></label>
+        <label>Hasta<input type="date" value={fechaHasta} min={fechaDesde} onChange={e => setFechaHasta(e.target.value)} /></label>
+        <button type="button" className="primary fit" onClick={escanearAgenda} disabled={cargandoAgenda || !clientId}>{cargandoAgenda ? 'Escaneando...' : tokenAcceso ? 'Actualizar eventos' : 'Conectar y escanear'}</button>
+      </div>
+      <p className="hint">{mensajeAgenda}{ultimaConsulta ? ` Última consulta: ${ultimaConsulta}.` : ''}</p>
+    </section>
+
+    <section className="dashboard-operational-cards google-agenda-summary">
+      <Card title="Eventos del rango" value={eventosGoogle.length} />
+      <Card title="Posibles eventos de visa" value={eventosVisa} />
+      <Card title="Requieren revisión" value={eventosGoogle.length - eventosVisa} />
+    </section>
+
+    {[...grupos.entries()].map(([fecha, lista]) => <section className="panel google-agenda-day" key={fecha}>
+      <div className="section-title"><div><h2>{fecha === 'sin-fecha' ? 'Sin fecha identificable' : fechaLargaDesdeClave(fecha)}</h2><p>{lista.length} evento{lista.length === 1 ? '' : 's'}</p></div></div>
+      <div className="google-event-list">{lista.map(item => <article className="google-event-card" key={item.id}>
+        <div className="google-event-time">{horaEventoGoogle(item)}</div>
+        <div>
+          <div className="google-event-heading"><strong>{item.summary || 'Evento sin título'}</strong><span className={esEventoVisaGoogle(item) ? 'pill info' : 'pill warn'}>{esEventoVisaGoogle(item) ? 'Posible visa' : 'Revisar'}</span></div>
+          {item.location && <p><strong>Ubicación:</strong> {item.location}</p>}
+          {item.description && <p className="google-event-description">{item.description}</p>}
+          <small>Organiza: {item.organizer?.displayName || item.organizer?.email || 'No disponible'}{item.attendees?.length ? ` · ${item.attendees.length} invitado${item.attendees.length === 1 ? '' : 's'}` : ''}</small>
+        </div>
+      </article>)}</div>
+    </section>)}
+    {!eventosGoogle.length && <div className="empty">Todavía no hay eventos cargados para mostrar.</div>}
+  </div>;
+}
+
 function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, onResetRoles, guardando = false, perfilActual = null, seguridad = {}, onActivateSecurity }) {
   const [borrador, setBorrador] = useState(() => normalizarConfiguracion(config));
   const [nuevaAsesora, setNuevaAsesora] = useState('');
@@ -3811,6 +4147,25 @@ function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, on
         <p>Los cambios que hagas en esta sección quedan como borrador hasta presionar el botón <strong>Guardar</strong>. Esta será la única manera de aplicar modificaciones de tarifas, valores informativos o asesoras.</p>
       </div>
       <button type="button" className="primary fit" onClick={guardarConfiguracion} disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar'}</button>
+    </section>
+
+    <section className="panel google-calendar-config">
+      <div className="section-title">
+        <div>
+          <h2>Integración con Google Calendar</h2>
+          <p>Configuración técnica para consultar eventos. El ID de cliente identifica la aplicación, no es una contraseña.</p>
+        </div>
+        <span className="pill ok">calendar.readonly</span>
+      </div>
+      <div className="two-cols">
+        <label>ID de cliente OAuth 2.0
+          <input value={borrador.googleCalendar?.clientId || ''} onChange={e => setBorrador(prev => normalizarConfiguracion({ ...prev, googleCalendar: { ...prev.googleCalendar, clientId: e.target.value } }))} placeholder="000000000000-xxxxxxxx.apps.googleusercontent.com" />
+        </label>
+        <label>ID del calendario
+          <input value={borrador.googleCalendar?.calendarId || 'primary'} onChange={e => setBorrador(prev => normalizarConfiguracion({ ...prev, googleCalendar: { ...prev.googleCalendar, calendarId: e.target.value } }))} placeholder="primary" />
+        </label>
+      </div>
+      <p className="hint">Usa <strong>primary</strong> para consultar el calendario principal de la cuenta que autoriza el acceso. En Google Cloud debes habilitar Calendar API y registrar el dominio de Vercel como origen JavaScript autorizado.</p>
     </section>
 
     <section className="panel security-panel">

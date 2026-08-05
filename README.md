@@ -1,9 +1,23 @@
-# SIGV Web — Fase 6B.1 · Agenda Google Calendar de solo lectura
+# SIGV Web — Fase 6B.3 · Corrección completa de facturación
 
 Base oficial: `2.9.11_SIGV_Web_Fase_5C11_Filtros_Fecha_Exportacion_Excel.zip`.
 
-- Versión interna: `6.1.0`
-- Build: `2026-08-04-06B01`
+- Versión interna: `6.1.2`
+- Build: `2026-08-04-06B03`
+
+## Corrección de facturación registrada
+
+Los Administradores activos pueden desplegar **Corregir facturación registrada** dentro del detalle de una asesoría facturada. El control permite corregir el valor efectivamente facturado, el tipo de trámite y la fecha real de facturación, y exige confirmación explícita.
+
+Cada corrección agrega al historial el valor anterior, el nuevo, el tipo anterior, el nuevo, la fecha anterior, la nueva, el correo del Administrador y el momento exacto. Los Asesores no reciben este permiso. La fecha actualiza también `periodoFacturacion`, por lo que el registro pasa al mes o rango correcto del Dashboard.
+
+## Facturación proveniente de fechas anteriores
+
+La tarjeta **Facturación del periodo AmCham** ahora permite desplegar las asesorías que componen el indicador proveniente de fechas anteriores. Muestra ID, cliente, fecha de creación, fecha de facturación, cantidad de visas, valor facturado y acceso directo al detalle.
+
+## Fecha de creación compacta
+
+El control de fecha de creación se redujo a una sola línea discreta con fecha y botón **Cambiar fecha**. La explicación funcional permanece disponible como ayuda contextual.
 
 ## Agenda Google Calendar
 

@@ -1,8 +1,8 @@
-# Validación final — Fase 6B.1
+# Validación final — Fase 6B.3
 
 ## Resultado
 
-La versión `6.1.0`, build `2026-08-04-06B01`, fue revisada sobre la base oficial de la Fase 6A.2.
+La versión `6.1.2`, build `2026-08-04-06B03`, fue revisada sobre la base oficial de la Fase 6B.2.
 
 ## Comprobaciones aprobadas
 
@@ -21,6 +21,15 @@ La versión `6.1.0`, build `2026-08-04-06B01`, fue revisada sobre la base oficia
 - Lectura paginada, recurrencias expandidas y orden por fecha de inicio.
 - Agrupación diaria y clasificación orientativa de posibles eventos de visa.
 - Token temporal mantenido únicamente en memoria.
+- Corrección administrativa de valor facturado y tipo de trámite.
+- Conservación de la fecha histórica de facturación.
+- Auditoría estructurada de cada corrección financiera.
+- Desglose de asesorías y visas provenientes de fechas anteriores.
+- Acceso directo desde el desglose financiero al detalle de la asesoría.
+- Control compacto y discreto para la fecha de creación.
+- Corrección administrativa de la fecha real de facturación.
+- Actualización coherente de fecha ISO, milisegundos y periodo de facturación.
+- Validación que impide fechas futuras y auditoría de fecha anterior y nueva.
 - Presencia del filtro superior **Periodo del Dashboard**.
 - Modos **Mes completo** y **Rango de fechas**.
 - Aplicación del periodo a todas las tarjetas operativas.
