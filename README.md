@@ -1,9 +1,17 @@
-# SIGV Web — Fase 6A.1 · Dashboard por periodo y Paquetes Premium pendientes
+# SIGV Web — Fase 6A.2 · Cambio auditado de fecha de creación
 
 Base oficial: `2.9.11_SIGV_Web_Fase_5C11_Filtros_Fecha_Exportacion_Excel.zip`.
 
-- Versión interna: `6.0.1`
-- Build: `2026-08-01-06A01`
+- Versión interna: `6.0.2`
+- Build: `2026-08-04-06A02`
+
+## Cambio de fecha de creación
+
+Al inicio del detalle de cada asesoría se muestra su fecha de creación. Únicamente un usuario activo con el rol interno `administrador` puede editarla y confirmar el cambio. La aplicación valida el formato, impide fechas futuras y evita guardar la misma fecha.
+
+Antes de actualizar se presenta una confirmación con la fecha anterior, la nueva y el impacto operativo. Al confirmar se actualizan conjuntamente `createdAtIso` y `createdAtMs`, por lo que el cambio se refleja de inmediato en filtros, Dashboard, calendario, métricas y exportación Excel.
+
+Cada modificación agrega un movimiento al historial con la fecha anterior, la fecha nueva, el correo del Administrador y el momento exacto del cambio. Las reglas de Firestore impiden que el rol `asesor` modifique cualquiera de los campos de creación, incluso mediante una solicitud directa fuera de la interfaz.
 
 ## Filtro global del Dashboard
 
@@ -62,7 +70,7 @@ El calendario muestra un mes a la vez. En modo rango permite navegar únicamente
 
 - No modifica la estructura de Firestore.
 - No requiere migración de datos.
-- No modifica `firestore.rules`.
+- Refuerza `firestore.rules`; las reglas actualizadas deben publicarse junto con la aplicación.
 - Conserva filtros y exportación Excel del menú Asesorías.
 - Conserva seguridad por roles, precios personalizados, descuentos, afiliación grupal y reconciliación de facturación de julio de 2026.
 - El ZIP no incluye `node_modules`, `dist` ni `package-lock.json`.
@@ -75,4 +83,4 @@ npm run check
 npm run build
 ```
 
-No es necesario volver a publicar las reglas de Firestore si ya están desplegadas las de la versión anterior.
+Es obligatorio publicar las reglas de Firestore incluidas en esta versión para aplicar la protección del cambio de fecha en el servidor.
