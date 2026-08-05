@@ -18,8 +18,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 6B.1 Web · Agenda Google Calendar de solo lectura';
-const BUILD_ID = '2026-08-04-06B01';
+const APP_VERSION = 'Fase 6B.3 Web · Corrección completa de facturación';
+const BUILD_ID = '2026-08-04-06B03';
 const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
 const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
 const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
@@ -131,6 +131,7 @@ function permisosDesdePerfil(perfil) {
     puedeCambiarEstado: esAdministrador || esAsesor,
     puedeEliminarCasos: esAdministrador,
     puedeCambiarFechaCreacion: esAdministrador,
+    puedeCorregirFacturacion: esAdministrador,
     puedeVerAgendaGoogle: esAdministrador,
     puedeEditarConfiguracion: esAdministrador,
     puedeAgregarAsesoras: esAdministrador,
@@ -950,6 +951,8 @@ function resumenFinancieroPeriodo(casos = [], fechaDesde = '', fechaHasta = '') 
     facturadoTotal: 0,
     facturadoMismoMes: 0,
     facturadoMesesAnteriores: 0,
+    visasMesesAnteriores: 0,
+    casosMesesAnteriores: [],
     facturadoOrigenNoIdentificado: 0,
     pendienteGenerado: 0,
     visasGeneradas: 0,
@@ -987,7 +990,19 @@ function resumenFinancieroPeriodo(casos = [], fechaDesde = '', fechaHasta = '') 
     resumen.visasFacturadas += cantidadVisasFacturadasCaso(caso);
 
     if (creacionEnPeriodo) resumen.facturadoMismoMes += valorFacturado;
-    else if (fechaCreacion && fechaDesde && fechaCreacion < fechaDesde) resumen.facturadoMesesAnteriores += valorFacturado;
+    else if (fechaCreacion && fechaDesde && fechaCreacion < fechaDesde) {
+      const cantidadFacturada = cantidadVisasFacturadasCaso(caso);
+      resumen.facturadoMesesAnteriores += valorFacturado;
+      resumen.visasMesesAnteriores += cantidadFacturada;
+      resumen.casosMesesAnteriores.push({
+        id: caso.id,
+        nombre: textoClienteCaso(caso),
+        fechaCreacion,
+        fechaFactura,
+        valorFacturado,
+        cantidadVisas: cantidadFacturada,
+      });
+    }
     else resumen.facturadoOrigenNoIdentificado += valorFacturado;
   }
 
@@ -1857,6 +1872,91 @@ function App() {
     }
   }
 
+  async function corregirFacturacionRegistrada(casoId, { valorFacturadoNuevo, tipoTramiteNuevo, fechaFacturacionNueva }) {
+    if (!permisos.puedeCorregirFacturacion) {
+      alert('Solo un Administrador activo puede corregir una facturación registrada.');
+      return false;
+    }
+    const casoAnterior = casos.find(item => item.id === casoId);
+    if (!casoAnterior || casoAnterior.facturacion?.estadoFactura !== 'facturada') {
+      alert('La asesoría no tiene una facturación registrada que pueda corregirse.');
+      return false;
+    }
+    const valorNuevo = Number(valorFacturadoNuevo);
+    if (!Number.isFinite(valorNuevo) || valorNuevo <= 0) {
+      alert('Ingresa un valor facturado válido mayor que cero.');
+      return false;
+    }
+    if (!tiposSolicitud.some(item => item.id === tipoTramiteNuevo)) {
+      alert('Selecciona un tipo de trámite válido.');
+      return false;
+    }
+    const fechaNueva = fechaCreacionDesdeClave(fechaFacturacionNueva);
+    if (!fechaNueva) {
+      alert('Selecciona una fecha de facturación válida.');
+      return false;
+    }
+    if (fechaFacturacionNueva > claveFechaDesdeValor(new Date())) {
+      alert('La fecha de facturación no puede estar en el futuro.');
+      return false;
+    }
+    const valorAnterior = valorFacturadoCaso(casoAnterior);
+    const tipoAnterior = casoAnterior.facturacion?.tipoTramite || casoAnterior.tipoSolicitudKey || 'primeraVez';
+    const fechaAnterior = claveFacturacionCaso(casoAnterior);
+    if (valorNuevo === valorAnterior && tipoTramiteNuevo === tipoAnterior && fechaFacturacionNueva === fechaAnterior) {
+      alert('No hay cambios para guardar en la facturación registrada.');
+      return false;
+    }
+    const usuarioCambio = usuarioAuth?.email || perfil?.email || 'Administrador SIGV';
+    const confirma = window.confirm(`Vas a corregir una facturación histórica de ${casoId}.\n\nValor anterior: ${moneda(valorAnterior)}\nValor nuevo: ${moneda(valorNuevo)}\nTipo anterior: ${textoSolicitud(tipoAnterior)}\nTipo nuevo: ${textoSolicitud(tipoTramiteNuevo)}\nFecha anterior: ${fechaAnterior || 'no disponible'}\nFecha nueva: ${fechaFacturacionNueva}\n\nEste cambio afectará las métricas del periodo correspondiente. ¿Deseas confirmar?`);
+    if (!confirma) return false;
+
+    const movimiento = {
+      ...evento('Corrección de facturación', `Valor facturado anterior: ${moneda(valorAnterior)}. Valor facturado nuevo: ${moneda(valorNuevo)}. Tipo de trámite anterior: ${textoSolicitud(tipoAnterior)}. Tipo nuevo: ${textoSolicitud(tipoTramiteNuevo)}. Fecha de facturación anterior: ${fechaAnterior || 'no disponible'}. Fecha nueva: ${fechaFacturacionNueva}. Corrección realizada por ${usuarioCambio}.`, usuarioCambio),
+      valorFacturadoAnterior: valorAnterior,
+      valorFacturadoNuevo: valorNuevo,
+      tipoTramiteAnterior: tipoAnterior,
+      tipoTramiteNuevo,
+      fechaFacturacionAnterior: fechaAnterior || '',
+      fechaFacturacionNueva,
+      usuarioCambio,
+    };
+    const actualizado = {
+      ...casoAnterior,
+      facturacion: {
+        ...casoAnterior.facturacion,
+        valorFacturado: valorNuevo,
+        tipoTramite: tipoTramiteNuevo,
+        fechaFacturacionIso: fechaNueva.toISOString(),
+        fechaFacturacionMs: fechaNueva.getTime(),
+        periodoFacturacion: fechaFacturacionNueva.slice(0, 7),
+        fechaFacturacionInferida: false,
+        origenFechaFacturacion: 'Fecha corregida por Administrador con registro de auditoría.',
+        corregidoPor: usuarioCambio,
+        corregidoAtIso: new Date().toISOString(),
+        corregidoAtMs: Date.now(),
+      },
+      actualizadoPor: usuarioCambio,
+      updatedAtIso: new Date().toISOString(),
+      updatedAtMs: Date.now(),
+      historial: [...(casoAnterior.historial || []), movimiento],
+    };
+
+    try {
+      setGuardando(true);
+      await conTiempoLimite(guardarDocumentoRest('casos', casoId, actualizado), 20000, 'Firestore no respondió al corregir la facturación en 20 segundos.');
+      setCasos(prev => prev.map(item => item.id === casoId ? actualizado : item));
+      setCasoAbiertoId(casoId);
+      return true;
+    } catch (error) {
+      console.error('Error corrigiendo facturación registrada:', error);
+      alert(`No se pudo corregir la facturación en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+      return false;
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   async function guardarConfigFirestore(nuevaConfig) {
     if (!permisos.puedeEditarConfiguracion) {
       alert('Solo el Administrador puede editar la configuración general.');
@@ -2106,7 +2206,7 @@ function App() {
 
       {!cargando && vista === 'casos' && <Casos casos={casos} onOpen={abrirCaso} config={config} />}
 
-      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => navegarA('casos')} onSave={actualizarCaso} onChangeCreationDate={cambiarFechaCreacionCaso} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
+      {!cargando && vista === 'detalleCaso' && casoAbierto && <DetalleCaso caso={casoAbierto} onBack={() => navegarA('casos')} onSave={actualizarCaso} onChangeCreationDate={cambiarFechaCreacionCaso} onCorrectInvoice={corregirFacturacionRegistrada} onDelete={eliminarCaso} config={config} guardando={guardando} permisos={permisos} />}
 
       {!cargando && vista === 'detalleCaso' && !casoAbierto && <div className="empty">La asesoría seleccionada aún se está cargando o no existe.</div>}
 
@@ -2388,7 +2488,7 @@ function Dashboard({ casos, onOpen }) {
       <Card title="Pendiente Paquete Premium" value={premiumPendientes} />
     </section>
 
-    <ResumenFacturacionMensual resumen={financiero} etiquetaPeriodo={etiquetaPeriodo} />
+    <ResumenFacturacionMensual resumen={financiero} etiquetaPeriodo={etiquetaPeriodo} onOpen={onOpen} />
 
     <CalendarioAsesorias
       casos={casosPeriodo}
@@ -2463,7 +2563,7 @@ function FiltroPeriodoDashboard({
   </section>;
 }
 
-function ResumenFacturacionMensual({ resumen, etiquetaPeriodo }) {
+function ResumenFacturacionMensual({ resumen, etiquetaPeriodo, onOpen }) {
   return <section className="panel mt monthly-finance-panel">
     <div className="monthly-finance-header">
       <div>
@@ -2497,6 +2597,23 @@ function ResumenFacturacionMensual({ resumen, etiquetaPeriodo }) {
         <small>{resumen.visasPendientes} visa{resumen.visasPendientes === 1 ? '' : 's'} creada{resumen.visasPendientes === 1 ? '' : 's'} en el periodo que todavía no se ha{resumen.visasPendientes === 1 ? '' : 'n'} facturado</small>
       </article>
     </div>
+
+    {resumen.casosMesesAnteriores.length > 0 && <details className="prior-period-invoices">
+      <summary>
+        <span>Ver asesorías provenientes de fechas anteriores</span>
+        <strong>{resumen.casosMesesAnteriores.length} asesoría{resumen.casosMesesAnteriores.length === 1 ? '' : 's'} · {resumen.visasMesesAnteriores} visa{resumen.visasMesesAnteriores === 1 ? '' : 's'}</strong>
+      </summary>
+      <div className="prior-period-invoice-list">
+        {resumen.casosMesesAnteriores.map(item => <article key={item.id} className="prior-period-invoice-item">
+          <div>
+            <strong>{item.id} · {item.nombre}</strong>
+            <small>Creada: {etiquetaFechaCorta(item.fechaCreacion)} · Facturada: {etiquetaFechaCorta(item.fechaFactura)} · {item.cantidadVisas} visa{item.cantidadVisas === 1 ? '' : 's'}</small>
+          </div>
+          <b>{moneda(item.valorFacturado)}</b>
+          <button type="button" className="small-btn" onClick={() => onOpen?.(item.id)}>Abrir</button>
+        </article>)}
+      </div>
+    </details>}
 
     <div className="monthly-finance-note">
       <strong>Criterio del reporte:</strong> las tarjetas operativas se filtran por fecha de creación. En facturación, los valores generados se asignan por fecha de creación y los valores facturados por la fecha real de facturación. Los indicadores son independientes y no deben sumarse entre sí.
@@ -3186,15 +3303,25 @@ function CaseTable({ casos, onOpen, compacto = false }) {
   </div>;
 }
 
-function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, config, guardando = false, permisos = {} }) {
+function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onCorrectInvoice, onDelete, config, guardando = false, permisos = {} }) {
   const [edit, setEdit] = useState(() => ({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) }));
   const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
   const [fechaCreacionSeleccionada, setFechaCreacionSeleccionada] = useState(() => claveCreacionCaso(caso));
+  const [correccionFactura, setCorreccionFactura] = useState(() => ({
+    valor: valorFacturadoCaso(caso),
+    tipoTramite: caso.facturacion?.tipoTramite || caso.tipoSolicitudKey || 'primeraVez',
+    fechaFacturacion: claveFacturacionCaso(caso),
+  }));
   useEffect(() => {
     setEdit({ ...caso, integrantes: normalizarIntegrantes(caso).map(serializarIntegrante) });
     setNuevoSeguimiento('');
     setFechaCreacionSeleccionada(claveCreacionCaso(caso));
-  }, [caso.id]);
+    setCorreccionFactura({
+      valor: valorFacturadoCaso(caso),
+      tipoTramite: caso.facturacion?.tipoTramite || caso.tipoSolicitudKey || 'primeraVez',
+      fechaFacturacion: claveFacturacionCaso(caso),
+    });
+  }, [caso.id, caso.updatedAtMs]);
 
   useEffect(() => {
     setFechaCreacionSeleccionada(claveCreacionCaso(caso));
@@ -3292,12 +3419,8 @@ function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, con
         <span className={claseEstado(calc.estado)}>{calc.estado}</span>
       </div>
       <div className="creation-date-control">
-        <div>
-          <strong>Fecha de creación</strong>
-          <small>Esta fecha alimenta Dashboard, calendario, filtros, métricas y exportación Excel.</small>
-        </div>
-        <label>
-          <span>Fecha registrada</span>
+        <strong title="Esta fecha alimenta Dashboard, calendario, filtros, métricas y exportación Excel.">Fecha de creación</strong>
+        <label title="Fecha registrada para esta asesoría">
           <input
             type="date"
             value={fechaCreacionSeleccionada}
@@ -3307,11 +3430,11 @@ function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, con
           />
         </label>
         {permisos.puedeCambiarFechaCreacion
-          ? <button type="button" className="primary fit" disabled={guardando || !fechaCreacionSeleccionada || fechaCreacionSeleccionada === claveCreacionCaso(caso)} onClick={async () => {
+          ? <button type="button" className="small-btn" disabled={guardando || !fechaCreacionSeleccionada || fechaCreacionSeleccionada === claveCreacionCaso(caso)} onClick={async () => {
             const guardado = await onChangeCreationDate?.(caso.id, fechaCreacionSeleccionada);
             if (guardado) alert('Fecha de creación actualizada y registrada en el historial.');
-          }}>{guardando ? 'Guardando...' : 'Confirmar cambio de fecha'}</button>
-          : <small className="hint">Solo un Administrador activo puede modificar esta fecha.</small>}
+          }}>{guardando ? 'Guardando...' : 'Cambiar fecha'}</button>
+          : <span className="hint" title="Solo un Administrador activo puede modificar esta fecha.">Solo lectura</span>}
       </div>
     </section>
 
@@ -3363,6 +3486,29 @@ function DetalleCaso({ caso, onBack, onSave, onChangeCreationDate, onDelete, con
           descuentoCantidadHabilitado={calc.aplicarDescuentoCantidad}
           requiereEmpresaAfiliada={hayIntegranteAfiliado(integrantes)}
         />
+        {edit.facturacion?.estadoFactura === 'facturada' && permisos.puedeCorregirFacturacion && <details className="invoice-correction-control">
+          <summary>Corregir facturación registrada</summary>
+          <div className="invoice-correction-content">
+            <p className="hint">Uso exclusivo para corregir datos históricos confirmados. El valor, tipo y fecha anteriores quedan registrados en auditoría.</p>
+            <div className="two-cols">
+              <label>Valor facturado correcto
+                <input type="number" min="1" step="1" value={correccionFactura.valor} onChange={e => setCorreccionFactura(prev => ({ ...prev, valor: e.target.value }))} />
+              </label>
+              <label>Tipo de trámite facturado
+                <select value={correccionFactura.tipoTramite} onChange={e => setCorreccionFactura(prev => ({ ...prev, tipoTramite: e.target.value }))}>
+                  {tiposSolicitud.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+              </label>
+              <label>Fecha de facturación correcta
+                <input type="date" max={claveFechaDesdeValor(new Date())} value={correccionFactura.fechaFacturacion} onChange={e => setCorreccionFactura(prev => ({ ...prev, fechaFacturacion: e.target.value }))} />
+              </label>
+            </div>
+            <button type="button" className="primary fit" disabled={guardando} onClick={async () => {
+              const corregido = await onCorrectInvoice?.(caso.id, { valorFacturadoNuevo: correccionFactura.valor, tipoTramiteNuevo: correccionFactura.tipoTramite, fechaFacturacionNueva: correccionFactura.fechaFacturacion });
+              if (corregido) alert('Facturación corregida y registrada en el historial.');
+            }}>{guardando ? 'Guardando...' : 'Confirmar corrección facturada'}</button>
+          </div>
+        </details>}
 
         <h2>7. Fecha Cita embajada</h2>
         <label>Fecha Cita embajada

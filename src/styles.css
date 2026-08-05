@@ -566,32 +566,82 @@ button.calendar-cell:hover { transform: none; background: #f8fbff; }
 /* Fase 5C.11 · filtros por fecha y exportación Excel en Asesorías */
 
 .creation-date-control {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(180px, 240px) auto;
-  gap: 14px;
-  align-items: end;
-  margin-top: 16px;
-  padding: 14px;
+  display: inline-flex;
+  gap: 9px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 7px 9px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 9px;
   background: var(--surface-soft, #f8fafc);
 }
 
-.creation-date-control > div,
 .creation-date-control label {
-  display: grid;
-  gap: 5px;
+  display: block;
+  margin: 0;
 }
 
-.creation-date-control small {
-  display: block;
+.creation-date-control input {
+  width: auto;
+  min-width: 145px;
+  padding: 7px 9px;
 }
 
 @media (max-width: 800px) {
   .creation-date-control {
-    grid-template-columns: 1fr;
-    align-items: stretch;
+    display: flex;
+    flex-wrap: wrap;
   }
+}
+
+.invoice-correction-control,
+.prior-period-invoices {
+  margin-top: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.invoice-correction-control summary,
+.prior-period-invoices summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.invoice-correction-content,
+.prior-period-invoice-list {
+  padding: 0 14px 14px;
+}
+
+.prior-period-invoice-list {
+  display: grid;
+  gap: 8px;
+}
+
+.prior-period-invoice-item {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.prior-period-invoice-item small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+}
+
+@media (max-width: 720px) {
+  .prior-period-invoice-item { grid-template-columns: 1fr; }
+  .prior-period-invoices summary { flex-direction: column; }
 }
 
 /* Fase 6B.1 · agenda Google Calendar de solo lectura */
