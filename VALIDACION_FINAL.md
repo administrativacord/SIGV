@@ -1,8 +1,8 @@
-# Validación final — Fase 6B.3
+# Validación final — Fase 6C.1
 
 ## Resultado
 
-La versión `6.1.2`, build `2026-08-04-06B03`, fue revisada sobre la base oficial de la Fase 6B.2.
+La versión `6.2.0`, build `2026-08-05-06C01`, fue revisada sobre la base oficial de la Fase 6B.4.
 
 ## Comprobaciones aprobadas
 
@@ -30,6 +30,17 @@ La versión `6.1.2`, build `2026-08-04-06B03`, fue revisada sobre la base oficia
 - Corrección administrativa de la fecha real de facturación.
 - Actualización coherente de fecha ISO, milisegundos y periodo de facturación.
 - Validación que impide fechas futuras y auditoría de fecha anterior y nueva.
+- Agenda Google extraída de `main.jsx` a un módulo independiente.
+- Separación de interfaz, servicio OAuth/REST, utilidades y estilos.
+- Ausencia de la implementación heredada de Calendar dentro del archivo principal.
+- Creación condicional que falla si el consecutivo ya existe.
+- Recarga de consecutivos del servidor y reintento controlado ante colisiones.
+- Reglas que preservan creador y primer evento histórico en toda actualización.
+- Protección aplicable también a sesiones con rol Administrador.
+- Metadatos `updateTime` conservados desde las lecturas de Firestore.
+- Escrituras de asesorías condicionadas a la versión exacta leída.
+- Conflictos simultáneos bloqueados sin sobrescritura silenciosa.
+- Mensaje operativo para recargar cuando otra persona guardó primero.
 - Presencia del filtro superior **Periodo del Dashboard**.
 - Modos **Mes completo** y **Rango de fechas**.
 - Aplicación del periodo a todas las tarjetas operativas.

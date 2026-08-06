@@ -1,9 +1,27 @@
-# SIGV Web — Fase 6B.3 · Corrección completa de facturación
+# SIGV Web — Fase 6C.1 · Protección contra sobrescritura
 
 Base oficial: `2.9.11_SIGV_Web_Fase_5C11_Filtros_Fecha_Exportacion_Excel.zip`.
 
-- Versión interna: `6.1.2`
-- Build: `2026-08-04-06B03`
+- Versión interna: `6.2.0`
+- Build: `2026-08-05-06C01`
+
+## Incidente A0039 y causa corregida
+
+El consecutivo se calculaba en cada navegador y la creación utilizaba `PATCH`. Dos sesiones con la misma lista podían elegir simultáneamente A0039; la segunda petición actualizaba el documento existente y reemplazaba la asesoría original.
+
+La creación ahora incluye la precondición Firestore `currentDocument.exists=false`. Si otro usuario reservó primero el ID, Firestore rechaza la escritura, SIGV recarga los consecutivos desde el servidor y reintenta hasta cinco veces con el siguiente ID. En ningún caso convierte una creación en actualización.
+
+Las reglas incorporan además `preservesCaseIdentity()`: toda actualización debe conservar el creador original y el primer movimiento del historial. Esta segunda barrera también aplica a Administradores y bloquea intentos de sustituir el contenido completo de una asesoría existente.
+
+## Trabajo simultáneo seguro
+
+Las asesorías cargadas incluyen la versión `updateTime` entregada por Firestore. Cada edición, cambio de fecha, corrección financiera o migración se guarda con esa precondición. Si otra persona modificó antes el mismo registro, Firestore rechaza el segundo guardado en lugar de sobrescribir silenciosamente; SIGV informa que debe recargarse y revisar la versión actual.
+
+Este control permite que varias personas creen asesorías simultáneamente y que trabajen sobre casos distintos sin interferencia. Si dos personas editan exactamente la misma asesoría, gana el primer guardado y el segundo queda bloqueado para revisión manual.
+
+## Arquitectura modular de Agenda Google
+
+La integración con Google Calendar fue extraída de `main.jsx` y organizada bajo `src/modules/google-calendar/`. La interfaz, el servicio OAuth/REST, las utilidades de fechas y clasificación, y los estilos ahora tienen responsabilidades independientes. Esta refactorización no cambia el comportamiento visible ni los permisos de solo lectura.
 
 ## Corrección de facturación registrada
 

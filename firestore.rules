@@ -133,6 +133,26 @@ service cloud.firestore {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdAtMs', 'createdAtIso']);
     }
 
+    function preservesCaseIdentity() {
+      return (
+          (!('creadoPor' in resource.data) && !('creadoPor' in request.resource.data))
+          || (
+            ('creadoPor' in resource.data)
+            && ('creadoPor' in request.resource.data)
+            && request.resource.data.creadoPor == resource.data.creadoPor
+          )
+        )
+        && (
+          !('historial' in resource.data)
+          || resource.data.historial.size() == 0
+          || (
+            ('historial' in request.resource.data)
+            && request.resource.data.historial.size() >= resource.data.historial.size()
+            && request.resource.data.historial[0] == resource.data.historial[0]
+          )
+        );
+    }
+
 
     function isFacturada(data) {
       return ('facturacion' in data)
@@ -201,7 +221,7 @@ service cloud.firestore {
     match /casos/{casoId} {
       allow read: if activeUser();
       allow create: if (activeAdmin() && validFacturacionStructure(request.resource.data)) || (activeUser() && noPriceOverridesOnCreate() && noDiscountOverrideOnCreate() && validFacturacionAudit(request.resource.data));
-      allow update: if (activeAdmin() && validFacturacionStructure(request.resource.data)) || (activeUser() && preservesCreationDate() && preservesPriceOverrides() && preservesDiscountSetting() && validFacturacionUpdate());
+      allow update: if preservesCaseIdentity() && ((activeAdmin() && validFacturacionStructure(request.resource.data)) || (activeUser() && preservesCreationDate() && preservesPriceOverrides() && preservesDiscountSetting() && validFacturacionUpdate()));
       allow delete: if activeAdmin();
     }
 
