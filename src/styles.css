@@ -644,67 +644,6 @@ button.calendar-cell:hover { transform: none; background: #f8fbff; }
   .prior-period-invoices summary { flex-direction: column; }
 }
 
-/* Fase 6B.1 · agenda Google Calendar de solo lectura */
-.google-agenda-stack {
-  display: grid;
-  gap: 18px;
-}
-
-.google-agenda-controls {
-  display: grid;
-  grid-template-columns: minmax(170px, 220px) minmax(170px, 220px) auto;
-  gap: 12px;
-  align-items: end;
-  margin-top: 16px;
-}
-
-.google-agenda-summary {
-  margin: 0;
-}
-
-.google-event-list {
-  display: grid;
-  gap: 10px;
-}
-
-.google-event-card {
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: #fff;
-}
-
-.google-event-time {
-  font-weight: 700;
-  color: var(--primary, #164e63);
-}
-
-.google-event-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.google-event-card p {
-  margin: 6px 0;
-}
-
-.google-event-description {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-@media (max-width: 760px) {
-  .google-agenda-controls,
-  .google-event-card {
-    grid-template-columns: 1fr;
-  }
-}
-.cases-page-panel { display: grid; gap: 18px; }
 .case-date-filter { border: 1px solid #dbeafe; background: #f8fbff; border-radius: 18px; padding: 18px; }
 .case-date-filter-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 15px; }
 .case-date-filter-header h2 { margin: 0 0 5px; font-size: 18px; }

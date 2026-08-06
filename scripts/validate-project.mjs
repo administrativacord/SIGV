@@ -12,6 +12,10 @@ const required = [
   'src/firestoreRest.js',
   'src/styles.css',
   'src/xlsxExport.js',
+  'src/modules/google-calendar/AgendaGoogleCalendar.jsx',
+  'src/modules/google-calendar/googleCalendarService.js',
+  'src/modules/google-calendar/googleCalendarUtils.js',
+  'src/modules/google-calendar/agendaGoogle.css',
   'MIGRACION_FASE_5.md',
   'VALIDACION_FINAL.md',
 ];
@@ -25,7 +29,7 @@ for (const forbidden of ['node_modules', 'dist', 'package-lock.json']) {
 }
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-if (pkg.version !== '6.1.2') errors.push(`La versión esperada es 6.1.2 y se encontró ${pkg.version}`);
+if (pkg.version !== '6.2.0') errors.push(`La versión esperada es 6.2.0 y se encontró ${pkg.version}`);
 for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {} })) {
   for (const [name, version] of Object.entries(deps)) {
     if (version === 'latest' || version.includes('*') || version.startsWith('^') || version.startsWith('~')) {
@@ -35,7 +39,7 @@ for (const [group, deps] of Object.entries({ dependencies: pkg.dependencies || {
 }
 
 const rules = readFileSync(resolve(root, 'firestore.rules'), 'utf8');
-for (const expected of ['activeAdmin()', 'bootstrapSecurity()', 'primerAdministradorConfigurado', 'allow delete: if activeAdmin()', 'preservesCreationDate()', 'preservesPriceOverrides()', 'noPriceOverridesOnCreate()', 'noDiscountOverrideOnCreate()', 'preservesDiscountSetting()', 'validFacturacionStructure(data)', 'validFacturacionAudit(data)', 'validFacturacionUpdate()', 'preservesFacturacionAudit()']) {
+for (const expected of ['activeAdmin()', 'bootstrapSecurity()', 'primerAdministradorConfigurado', 'allow delete: if activeAdmin()', 'preservesCaseIdentity()', 'preservesCreationDate()', 'preservesPriceOverrides()', 'noPriceOverridesOnCreate()', 'noDiscountOverrideOnCreate()', 'preservesDiscountSetting()', 'validFacturacionStructure(data)', 'validFacturacionAudit(data)', 'validFacturacionUpdate()', 'preservesFacturacionAudit()']) {
   if (!rules.includes(expected)) errors.push(`Las reglas no contienen: ${expected}`);
 }
 
@@ -45,7 +49,12 @@ for (const forbidden of ['perfilAdministradorProvisional', 'Administrador provis
 }
 
 for (const expected of [
-  "Fase 6B.3 Web · Corrección completa de facturación",
+  "Fase 6C.1 Web · Protección contra sobrescritura",
+  'crearDocumentoSiNoExisteRest',
+  'for (let intento = 1; intento <= 5; intento += 1)',
+  'No fue posible reservar un consecutivo único',
+  'actualizarDocumentoConVersionRest',
+  'Otra persona modificó esta asesoría',
   'fechaFacturacionNueva',
   "periodoFacturacion: fechaFacturacionNueva.slice(0, 7)",
   'Fecha de facturación correcta',
@@ -56,9 +65,7 @@ for (const expected of [
   'Ver asesorías provenientes de fechas anteriores',
   'className="invoice-correction-control"',
   'puedeVerAgendaGoogle: esAdministrador',
-  'function AgendaGoogleCalendar',
-  'https://www.googleapis.com/auth/calendar.readonly',
-  'Escanear agenda por rango',
+  "import AgendaGoogleCalendar from './modules/google-calendar/AgendaGoogleCalendar'",
   "vista === 'agendaGoogle'",
   'puedeCambiarFechaCreacion: esAdministrador',
   'function fechaCreacionDesdeClave',
@@ -178,6 +185,20 @@ for (const expected of [
 }
 
 const styles = readFileSync(resolve(root, 'src/styles.css'), 'utf8');
+const agendaGoogle = readFileSync(resolve(root, 'src/modules/google-calendar/AgendaGoogleCalendar.jsx'), 'utf8');
+const agendaService = readFileSync(resolve(root, 'src/modules/google-calendar/googleCalendarService.js'), 'utf8');
+const agendaUtils = readFileSync(resolve(root, 'src/modules/google-calendar/googleCalendarUtils.js'), 'utf8');
+const agendaStyles = readFileSync(resolve(root, 'src/modules/google-calendar/agendaGoogle.css'), 'utf8');
+for (const expected of ['function AgendaGoogleCalendar', 'Escanear agenda por rango']) {
+  if (!agendaGoogle.includes(expected)) errors.push(`El módulo Agenda Google no contiene: ${expected}`);
+}
+for (const expected of ['https://www.googleapis.com/auth/calendar.readonly', 'listarEventosCalendar', 'singleEvents']) {
+  if (!agendaService.includes(expected)) errors.push(`El servicio de Calendar no contiene: ${expected}`);
+}
+for (const expected of ['esEventoVisaGoogle', 'ZONA_HORARIA_CALENDAR']) {
+  if (!agendaUtils.includes(expected)) errors.push(`Las utilidades de Calendar no contienen: ${expected}`);
+}
+if (main.includes('function AgendaGoogleCalendar') || main.includes('let promesaGoogleIdentity')) errors.push('Persistió implementación interna de Agenda Google en main.jsx');
 for (const expected of [
   'grid-template-columns: minmax(0, 1.72fr) minmax(320px, .78fr)',
   '@media (max-width: 980px)',
@@ -214,12 +235,13 @@ for (const expected of [
   '.finance-period-label',
   '.calendar-cell.outside-period',
   '.creation-date-control',
-  '.google-agenda-controls',
-  '.google-event-card',
   '.invoice-correction-control',
   '.prior-period-invoices',
 ]) {
   if (!styles.includes(expected)) errors.push(`Los estilos de Fase 6A.1 no contienen: ${expected}`);
+}
+for (const expected of ['.google-agenda-controls', '.google-event-card']) {
+  if (!agendaStyles.includes(expected)) errors.push(`Los estilos modulares de Agenda Google no contienen: ${expected}`);
 }
 
 const processLayoutCount = (main.match(/className="process-layout"/g) || []).length;
@@ -234,10 +256,15 @@ for (const expected of ['crearArchivoXlsx', 'descargarLibroXlsx', '[Content_Type
   if (!xlsx.includes(expected)) errors.push(`El exportador Excel no contiene: ${expected}`);
 }
 
+const firestoreRest = readFileSync(resolve(root, 'src/firestoreRest.js'), 'utf8');
+for (const expected of ['crearDocumentoSiNoExisteRest', 'currentDocument.exists=false', 'actualizarDocumentoConVersionRest', 'currentDocument.updateTime=', 'sinMetadatosLocales']) {
+  if (!firestoreRest.includes(expected)) errors.push(`La protección REST no contiene: ${expected}`);
+}
+
 if (errors.length) {
   console.error('Validación SIGV fallida:');
   for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
 
-console.log('Validación SIGV Fase 6B.3 aprobada.');
+console.log('Validación SIGV Fase 6C.1 aprobada.');

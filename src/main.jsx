@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { descargarLibroXlsx } from './xlsxExport';
+import AgendaGoogleCalendar from './modules/google-calendar/AgendaGoogleCalendar';
 import { auth } from './firebase';
 import {
   onAuthStateChanged,
@@ -11,6 +12,8 @@ import {
 import {
   diagnosticarFirestoreRest,
   guardarDocumentoRest,
+  crearDocumentoSiNoExisteRest,
+  actualizarDocumentoConVersionRest,
   listarColeccionRest,
   obtenerDocumentoRest,
   eliminarDocumentoRest,
@@ -18,8 +21,8 @@ import {
   activarSeguridadAdministradorRest,
 } from './firestoreRest';
 
-const APP_VERSION = 'Fase 6B.3 Web · Corrección completa de facturación';
-const BUILD_ID = '2026-08-04-06B03';
+const APP_VERSION = 'Fase 6C.1 Web · Protección contra sobrescritura';
+const BUILD_ID = '2026-08-05-06C01';
 const FECHA_MIGRACION_FACTURACION_JULIO_ISO = '2026-07-01T05:00:00.000Z';
 const FECHA_MIGRACION_FACTURACION_JULIO_MS = Date.parse(FECHA_MIGRACION_FACTURACION_JULIO_ISO);
 const PERIODO_MIGRACION_FACTURACION_JULIO = '2026-07';
@@ -845,8 +848,8 @@ async function migrarFacturacionInicialJulio(casos = [], actor = '') {
     const migrado = preparada.caso;
     try {
       const ahoraIso = new Date().toISOString();
-      await guardarDocumentoRest('casos', migrado.id, { ...migrado, updatedAtIso: ahoraIso });
-      reemplazos.set(migrado.id, { ...migrado, updatedAtIso: ahoraIso });
+      const guardado = await actualizarDocumentoConVersionRest('casos', migrado.id, { ...migrado, updatedAtIso: ahoraIso }, caso._firestoreUpdateTime);
+      reemplazos.set(migrado.id, guardado);
       if (preparada.asignarPrimeroJulio) visasMigradas += preparada.cantidadVisas;
     } catch (error) {
       errores += 1;
@@ -1671,7 +1674,7 @@ function App() {
     }
     const integrantes = normalizarIntegrantes(form);
     const principal = integrantes[0];
-    const id = generarId(casos);
+    let id = generarId(casos);
     const creadoPor = usuarioAuth?.email || 'Sistema';
     const nuevo = {
       id,
@@ -1715,14 +1718,34 @@ function App() {
 
     try {
       setGuardando(true);
-      await conTiempoLimite(guardarDocumentoRest('casos', id, {
-        ...nuevo,
-        createdAtIso: new Date().toISOString(),
-        updatedAtIso: new Date().toISOString(),
-      }), 20000, 'Firestore no respondió al guardar la asesoría en 20 segundos.');
-      setCasos(prev => [nuevo, ...prev.filter(c => c.id !== id)]);
+      let guardado = null;
+      for (let intento = 1; intento <= 5; intento += 1) {
+        const ahoraCreacion = new Date();
+        const candidato = {
+          ...nuevo,
+          id,
+          createdAtMs: ahoraCreacion.getTime(),
+          updatedAtMs: ahoraCreacion.getTime(),
+          createdAtIso: ahoraCreacion.toISOString(),
+          updatedAtIso: ahoraCreacion.toISOString(),
+        };
+        try {
+          guardado = await conTiempoLimite(
+            crearDocumentoSiNoExisteRest('casos', id, candidato),
+            20000,
+            'Firestore no respondió al crear la asesoría en 20 segundos.',
+          );
+          break;
+        } catch (errorCreacion) {
+          if (![409, 412].includes(errorCreacion?.status) || intento === 5) throw errorCreacion;
+          const casosServidor = await listarColeccionRest('casos');
+          id = generarId(casosServidor);
+        }
+      }
+      if (!guardado) throw new Error('No fue posible reservar un consecutivo único para la asesoría.');
+      setCasos(prev => [guardado, ...prev.filter(c => c.id !== guardado.id)]);
       setForm(inicialFormulario());
-      setCasoAbiertoId(id);
+      setCasoAbiertoId(guardado.id);
       setVista('detalleCaso');
     } catch (error) {
       console.error('Error guardando caso:', error);
@@ -1798,15 +1821,17 @@ function App() {
 
     try {
       setGuardando(true);
-      await conTiempoLimite(guardarDocumentoRest('casos', actualizado.id, {
+      const guardado = await conTiempoLimite(actualizarDocumentoConVersionRest('casos', actualizado.id, {
         ...actualizado,
         updatedAtIso: new Date().toISOString(),
-      }), 20000, 'Firestore no respondió al actualizar la asesoría en 20 segundos.');
-      setCasos(prev => prev.map(c => c.id === actualizado.id ? actualizado : c));
+      }, casoAnteriorGuardado._firestoreUpdateTime), 20000, 'Firestore no respondió al actualizar la asesoría en 20 segundos.');
+      setCasos(prev => prev.map(c => c.id === actualizado.id ? guardado : c));
       setCasoAbiertoId(actualizado.id);
     } catch (error) {
       console.error('Error actualizando caso:', error);
-      alert(`No se pudo actualizar la asesoría en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+      alert([409, 412].includes(error?.status)
+        ? 'Otra persona modificó esta asesoría mientras la tenías abierta. Tus cambios no sobrescribieron la información nueva. Recarga la página, revisa el registro actualizado e inténtalo nuevamente.'
+        : `No se pudo actualizar la asesoría en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
     } finally {
       setGuardando(false);
     }
@@ -1859,13 +1884,13 @@ function App() {
 
     try {
       setGuardando(true);
-      await conTiempoLimite(guardarDocumentoRest('casos', casoId, actualizado), 20000, 'Firestore no respondió al cambiar la fecha de creación en 20 segundos.');
-      setCasos(prev => prev.map(item => item.id === casoId ? actualizado : item));
+      const guardado = await conTiempoLimite(actualizarDocumentoConVersionRest('casos', casoId, actualizado, casoAnterior._firestoreUpdateTime), 20000, 'Firestore no respondió al cambiar la fecha de creación en 20 segundos.');
+      setCasos(prev => prev.map(item => item.id === casoId ? guardado : item));
       setCasoAbiertoId(casoId);
       return true;
     } catch (error) {
       console.error('Error cambiando fecha de creación:', error);
-      alert(`No se pudo cambiar la fecha de creación en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+      alert([409, 412].includes(error?.status) ? 'Otra persona modificó esta asesoría. La fecha no fue sobrescrita; recarga y revisa la información actual.' : `No se pudo cambiar la fecha de creación en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
       return false;
     } finally {
       setGuardando(false);
@@ -1944,13 +1969,13 @@ function App() {
 
     try {
       setGuardando(true);
-      await conTiempoLimite(guardarDocumentoRest('casos', casoId, actualizado), 20000, 'Firestore no respondió al corregir la facturación en 20 segundos.');
-      setCasos(prev => prev.map(item => item.id === casoId ? actualizado : item));
+      const guardado = await conTiempoLimite(actualizarDocumentoConVersionRest('casos', casoId, actualizado, casoAnterior._firestoreUpdateTime), 20000, 'Firestore no respondió al corregir la facturación en 20 segundos.');
+      setCasos(prev => prev.map(item => item.id === casoId ? guardado : item));
       setCasoAbiertoId(casoId);
       return true;
     } catch (error) {
       console.error('Error corrigiendo facturación registrada:', error);
-      alert(`No se pudo corregir la facturación en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
+      alert([409, 412].includes(error?.status) ? 'Otra persona modificó esta asesoría. La corrección no sobrescribió esos cambios; recarga y revisa la información actual.' : `No se pudo corregir la facturación en Firestore. Detalle: ${error.message || error.code || 'error desconocido'}.`);
       return false;
     } finally {
       setGuardando(false);
@@ -3860,183 +3885,6 @@ function ModalNotificacion({ modal, onClose, onConfirm }) {
   </div>;
 }
 
-let promesaGoogleIdentity = null;
-
-function cargarGoogleIdentity() {
-  if (window.google?.accounts?.oauth2) return Promise.resolve(window.google);
-  if (promesaGoogleIdentity) return promesaGoogleIdentity;
-  promesaGoogleIdentity = new Promise((resolve, reject) => {
-    const existente = document.querySelector('script[data-google-identity="sigv"]');
-    const script = existente || document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.dataset.googleIdentity = 'sigv';
-    script.onload = () => resolve(window.google);
-    script.onerror = () => reject(new Error('No fue posible cargar la autorización segura de Google.'));
-    if (!existente) document.head.appendChild(script);
-  });
-  return promesaGoogleIdentity;
-}
-
-function sumarDiasClave(clave, dias) {
-  const [year, month, day] = clave.split('-').map(Number);
-  const fecha = new Date(Date.UTC(year, month - 1, day + dias, 12));
-  return fecha.toISOString().slice(0, 10);
-}
-
-function esEventoVisaGoogle(eventoGoogle = {}) {
-  const asistentes = (eventoGoogle.attendees || []).map(item => `${item.displayName || ''} ${item.email || ''}`).join(' ');
-  const texto = normalizar(`${eventoGoogle.summary || ''} ${eventoGoogle.description || ''} ${eventoGoogle.location || ''} ${asistentes}`);
-  return ['visa', 'renovacion', 'primera vez', 'ds 160', 'ds160', 'consular', 'embajada', 'global entry'].some(palabra => texto.includes(palabra));
-}
-
-function fechaEventoGoogle(eventoGoogle = {}) {
-  return claveFechaDesdeValor(eventoGoogle.start?.dateTime || eventoGoogle.start?.date);
-}
-
-function horaEventoGoogle(eventoGoogle = {}) {
-  if (eventoGoogle.start?.date && !eventoGoogle.start?.dateTime) return 'Todo el día';
-  const fecha = new Date(eventoGoogle.start?.dateTime || '');
-  if (Number.isNaN(fecha.getTime())) return 'Hora no disponible';
-  return new Intl.DateTimeFormat('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: ZONA_HORARIA_COLOMBIA }).format(fecha);
-}
-
-function AgendaGoogleCalendar({ config = {} }) {
-  const hoy = claveFechaDesdeValor(new Date());
-  const [fechaDesde, setFechaDesde] = useState(hoy);
-  const [fechaHasta, setFechaHasta] = useState(() => sumarDiasClave(hoy, 30));
-  const [eventosGoogle, setEventosGoogle] = useState([]);
-  const [tokenAcceso, setTokenAcceso] = useState('');
-  const [cargandoAgenda, setCargandoAgenda] = useState(false);
-  const [mensajeAgenda, setMensajeAgenda] = useState('Conecta Google Calendar para consultar la agenda del periodo.');
-  const [ultimaConsulta, setUltimaConsulta] = useState('');
-  const clientId = String(config.clientId || '').trim();
-  const calendarId = String(config.calendarId || 'primary').trim() || 'primary';
-
-  async function solicitarToken() {
-    if (tokenAcceso) return tokenAcceso;
-    if (!clientId) throw new Error('Primero registra el ID de cliente OAuth de Google en Configuración.');
-    const google = await cargarGoogleIdentity();
-    return new Promise((resolve, reject) => {
-      const cliente = google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/calendar.readonly',
-        callback: respuesta => {
-          if (respuesta?.access_token) {
-            setTokenAcceso(respuesta.access_token);
-            resolve(respuesta.access_token);
-          } else {
-            reject(new Error(respuesta?.error_description || 'Google no entregó autorización de lectura.'));
-          }
-        },
-        error_callback: error => reject(new Error(error?.message || 'La ventana de autorización de Google fue cerrada.')),
-      });
-      cliente.requestAccessToken({ prompt: 'consent' });
-    });
-  }
-
-  async function escanearAgenda() {
-    if (!fechaDesde || !fechaHasta) {
-      setMensajeAgenda('Selecciona la fecha inicial y la fecha final.');
-      return;
-    }
-    if (fechaDesde > fechaHasta) {
-      setMensajeAgenda('La fecha inicial no puede ser posterior a la fecha final.');
-      return;
-    }
-    if ((Date.parse(`${fechaHasta}T12:00:00Z`) - Date.parse(`${fechaDesde}T12:00:00Z`)) / 86400000 > 366) {
-      setMensajeAgenda('El rango máximo permitido es de 366 días.');
-      return;
-    }
-
-    try {
-      setCargandoAgenda(true);
-      setMensajeAgenda('Consultando Google Calendar en modo de solo lectura...');
-      const token = await solicitarToken();
-      const encontrados = [];
-      let pageToken = '';
-      do {
-        const parametros = new URLSearchParams({
-          timeMin: `${fechaDesde}T00:00:00-05:00`,
-          timeMax: `${sumarDiasClave(fechaHasta, 1)}T00:00:00-05:00`,
-          singleEvents: 'true',
-          orderBy: 'startTime',
-          showDeleted: 'false',
-          maxResults: '2500',
-          timeZone: ZONA_HORARIA_COLOMBIA,
-        });
-        if (pageToken) parametros.set('pageToken', pageToken);
-        const respuesta = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${parametros}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (respuesta.status === 401) setTokenAcceso('');
-        if (!respuesta.ok) {
-          const detalle = await respuesta.json().catch(() => ({}));
-          throw new Error(detalle?.error?.message || `Google Calendar respondió con estado ${respuesta.status}.`);
-        }
-        const datos = await respuesta.json();
-        encontrados.push(...(datos.items || []).filter(item => item.status !== 'cancelled'));
-        pageToken = datos.nextPageToken || '';
-      } while (pageToken);
-      setEventosGoogle(encontrados);
-      setUltimaConsulta(fechaColombia(new Date()));
-      setMensajeAgenda(`${encontrados.length} evento${encontrados.length === 1 ? '' : 's'} encontrado${encontrados.length === 1 ? '' : 's'} entre ${fechaDesde} y ${fechaHasta}.`);
-    } catch (error) {
-      console.error('Error consultando Google Calendar:', error);
-      setMensajeAgenda(`No fue posible consultar Google Calendar: ${error.message || 'error desconocido'}`);
-    } finally {
-      setCargandoAgenda(false);
-    }
-  }
-
-  const grupos = eventosGoogle.reduce((mapa, item) => {
-    const clave = fechaEventoGoogle(item) || 'sin-fecha';
-    if (!mapa.has(clave)) mapa.set(clave, []);
-    mapa.get(clave).push(item);
-    return mapa;
-  }, new Map());
-  const eventosVisa = eventosGoogle.filter(esEventoVisaGoogle).length;
-
-  return <div className="google-agenda-stack">
-    <section className="panel google-agenda-filter">
-      <div className="section-title">
-        <div>
-          <h2>Escanear agenda por rango</h2>
-          <p>Consulta eventos programados desde hoy en adelante. SIGV solicita únicamente permiso de lectura y no puede modificar el calendario.</p>
-        </div>
-        <span className="pill ok">Solo lectura</span>
-      </div>
-      {!clientId && <div className="alert-box diagnostic">Falta configurar el ID de cliente OAuth de Google. Regístralo en Configuración → Integración con Google Calendar.</div>}
-      <div className="google-agenda-controls">
-        <label>Desde<input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} /></label>
-        <label>Hasta<input type="date" value={fechaHasta} min={fechaDesde} onChange={e => setFechaHasta(e.target.value)} /></label>
-        <button type="button" className="primary fit" onClick={escanearAgenda} disabled={cargandoAgenda || !clientId}>{cargandoAgenda ? 'Escaneando...' : tokenAcceso ? 'Actualizar eventos' : 'Conectar y escanear'}</button>
-      </div>
-      <p className="hint">{mensajeAgenda}{ultimaConsulta ? ` Última consulta: ${ultimaConsulta}.` : ''}</p>
-    </section>
-
-    <section className="dashboard-operational-cards google-agenda-summary">
-      <Card title="Eventos del rango" value={eventosGoogle.length} />
-      <Card title="Posibles eventos de visa" value={eventosVisa} />
-      <Card title="Requieren revisión" value={eventosGoogle.length - eventosVisa} />
-    </section>
-
-    {[...grupos.entries()].map(([fecha, lista]) => <section className="panel google-agenda-day" key={fecha}>
-      <div className="section-title"><div><h2>{fecha === 'sin-fecha' ? 'Sin fecha identificable' : fechaLargaDesdeClave(fecha)}</h2><p>{lista.length} evento{lista.length === 1 ? '' : 's'}</p></div></div>
-      <div className="google-event-list">{lista.map(item => <article className="google-event-card" key={item.id}>
-        <div className="google-event-time">{horaEventoGoogle(item)}</div>
-        <div>
-          <div className="google-event-heading"><strong>{item.summary || 'Evento sin título'}</strong><span className={esEventoVisaGoogle(item) ? 'pill info' : 'pill warn'}>{esEventoVisaGoogle(item) ? 'Posible visa' : 'Revisar'}</span></div>
-          {item.location && <p><strong>Ubicación:</strong> {item.location}</p>}
-          {item.description && <p className="google-event-description">{item.description}</p>}
-          <small>Organiza: {item.organizer?.displayName || item.organizer?.email || 'No disponible'}{item.attendees?.length ? ` · ${item.attendees.length} invitado${item.attendees.length === 1 ? '' : 's'}` : ''}</small>
-        </div>
-      </article>)}</div>
-    </section>)}
-    {!eventosGoogle.length && <div className="empty">Todavía no hay eventos cargados para mostrar.</div>}
-  </div>;
-}
 
 function Configuracion({ config, setConfig, usuariosSigv = [], onSaveUsuario, onResetRoles, guardando = false, perfilActual = null, seguridad = {}, onActivateSecurity }) {
   const [borrador, setBorrador] = useState(() => normalizarConfiguracion(config));

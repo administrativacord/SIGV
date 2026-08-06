@@ -78,6 +78,10 @@ function nombreDocumento(coleccion, documentoId) {
   return `${BASE_URL}/${coleccion}/${segmentoDocumento(documentoId)}`;
 }
 
+function sinMetadatosLocales(datos = {}) {
+  return Object.fromEntries(Object.entries(datos).filter(([clave]) => !clave.startsWith('_firestore')));
+}
+
 async function requestFirestore(url, opciones = {}, timeoutMs = 15000) {
   const token = await obtenerToken();
   const respuesta = await conTimeout(fetch(url, {
@@ -111,7 +115,7 @@ async function requestFirestore(url, opciones = {}, timeoutMs = 15000) {
 export async function obtenerDocumentoRest(coleccion, documentoId) {
   const data = await requestFirestore(nombreDocumento(coleccion, documentoId));
   if (!data) return null;
-  return { id: limpiarIdDocumento(data.name), ...decodificarCampos(data.fields || {}) };
+  return { id: limpiarIdDocumento(data.name), ...decodificarCampos(data.fields || {}), _firestoreCreateTime: data.createTime || '', _firestoreUpdateTime: data.updateTime || '' };
 }
 
 export async function listarColeccionRest(coleccion) {
@@ -127,16 +131,49 @@ export async function listarColeccionRest(coleccion) {
     pageToken = data.nextPageToken || '';
   } while (pageToken);
 
-  return documentos.map(doc => ({ id: limpiarIdDocumento(doc.name), ...decodificarCampos(doc.fields || {}) }));
+  return documentos.map(doc => ({ id: limpiarIdDocumento(doc.name), ...decodificarCampos(doc.fields || {}), _firestoreCreateTime: doc.createTime || '', _firestoreUpdateTime: doc.updateTime || '' }));
 }
 
 export async function guardarDocumentoRest(coleccion, documentoId, datos) {
-  const payload = { fields: codificarCampos(datos) };
+  const payload = { fields: codificarCampos(sinMetadatosLocales(datos)) };
   const data = await requestFirestore(nombreDocumento(coleccion, documentoId), {
     method: 'PATCH',
     body: JSON.stringify(payload),
   }, 20000);
   return { id: documentoId, ...decodificarCampos(data?.fields || {}) };
+}
+
+export async function crearDocumentoSiNoExisteRest(coleccion, documentoId, datos) {
+  const payload = { fields: codificarCampos(sinMetadatosLocales(datos)) };
+  const data = await requestFirestore(`${nombreDocumento(coleccion, documentoId)}?currentDocument.exists=false`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, 20000);
+  return {
+    id: documentoId,
+    ...decodificarCampos(data?.fields || {}),
+    _firestoreCreateTime: data?.createTime || '',
+    _firestoreUpdateTime: data?.updateTime || '',
+  };
+}
+
+export async function actualizarDocumentoConVersionRest(coleccion, documentoId, datos, updateTime) {
+  if (!updateTime) {
+    const error = new Error('No se encontró la versión de seguridad del registro. Recarga la información antes de guardar.');
+    error.status = 412;
+    throw error;
+  }
+  const payload = { fields: codificarCampos(sinMetadatosLocales(datos)) };
+  const data = await requestFirestore(`${nombreDocumento(coleccion, documentoId)}?currentDocument.updateTime=${encodeURIComponent(updateTime)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, 20000);
+  return {
+    id: documentoId,
+    ...decodificarCampos(data?.fields || {}),
+    _firestoreCreateTime: data?.createTime || '',
+    _firestoreUpdateTime: data?.updateTime || '',
+  };
 }
 
 export async function eliminarDocumentoRest(coleccion, documentoId) {
