@@ -1,7 +1,0 @@
-node_modules/
-dist/
-package-lock.json
-.env
-.env.*
-!.env.example
-.DS_Store
