@@ -1,264 +1,66 @@
-rules_version = '2';
+const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+let promesaGoogleIdentity = null;
 
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null && request.auth.token.email is string;
+function cargarGoogleIdentity() {
+  if (window.google?.accounts?.oauth2) return Promise.resolve(window.google);
+  if (promesaGoogleIdentity) return promesaGoogleIdentity;
+  promesaGoogleIdentity = new Promise((resolve, reject) => {
+    const existente = document.querySelector('script[data-google-identity="sigv"]');
+    const script = existente || document.createElement('script');
+    script.src = GOOGLE_IDENTITY_SCRIPT;
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleIdentity = 'sigv';
+    script.onload = () => resolve(window.google);
+    script.onerror = () => reject(new Error('No fue posible cargar la autorización segura de Google.'));
+    if (!existente) document.head.appendChild(script);
+  });
+  return promesaGoogleIdentity;
+}
+
+export async function solicitarTokenLecturaCalendar(clientId) {
+  if (!clientId) throw new Error('Primero registra el ID de cliente OAuth de Google en Configuración.');
+  const google = await cargarGoogleIdentity();
+  return new Promise((resolve, reject) => {
+    const cliente = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: CALENDAR_SCOPE,
+      callback: respuesta => respuesta?.access_token
+        ? resolve(respuesta.access_token)
+        : reject(new Error(respuesta?.error_description || 'Google no entregó autorización de lectura.')),
+      error_callback: error => reject(new Error(error?.message || 'La ventana de autorización de Google fue cerrada.')),
+    });
+    cliente.requestAccessToken({ prompt: 'consent' });
+  });
+}
+
+export async function listarEventosCalendar({ token, calendarId = 'primary', fechaDesde, fechaHastaExclusiva, timeZone }) {
+  const encontrados = [];
+  let pageToken = '';
+  do {
+    const parametros = new URLSearchParams({
+      timeMin: `${fechaDesde}T00:00:00-05:00`,
+      timeMax: `${fechaHastaExclusiva}T00:00:00-05:00`,
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      showDeleted: 'false',
+      maxResults: '2500',
+      timeZone,
+    });
+    if (pageToken) parametros.set('pageToken', pageToken);
+    const respuesta = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${parametros}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!respuesta.ok) {
+      const detalle = await respuesta.json().catch(() => ({}));
+      const error = new Error(detalle?.error?.message || `Google Calendar respondió con estado ${respuesta.status}.`);
+      error.status = respuesta.status;
+      throw error;
     }
-
-    function authEmail() {
-      return request.auth.token.email;
-    }
-
-    function userPath() {
-      return /databases/$(database)/documents/usuariosSigv/$(authEmail());
-    }
-
-    function securityPath() {
-      return /databases/$(database)/documents/configuracion/seguridad;
-    }
-
-    function validRole(role) {
-      return role == 'administrador' || role == 'asesor';
-    }
-
-    function userExists() {
-      return signedIn() && exists(userPath());
-    }
-
-    function activeUser() {
-      return userExists()
-        && get(userPath()).data.activo == true
-        && validRole(get(userPath()).data.rol);
-    }
-
-    function activeAdmin() {
-      return activeUser() && get(userPath()).data.rol == 'administrador';
-    }
-
-    function securityConfigured() {
-      return exists(securityPath())
-        && ('primerAdministradorConfigurado' in get(securityPath()).data)
-        && get(securityPath()).data.primerAdministradorConfigurado == true;
-    }
-
-    function bootstrapOpen() {
-      return !exists(securityPath())
-        || !('primerAdministradorConfigurado' in get(securityPath()).data)
-        || get(securityPath()).data.primerAdministradorConfigurado != true;
-    }
-
-    function validUserDocument(emailId) {
-      return request.resource.data.email == emailId
-        && validRole(request.resource.data.rol)
-        && request.resource.data.activo is bool;
-    }
-
-    function bootstrapUser(emailId) {
-      return signedIn()
-        && bootstrapOpen()
-        && emailId == authEmail()
-        && validUserDocument(emailId)
-        && request.resource.data.rol == 'administrador'
-        && request.resource.data.activo == true
-        && existsAfter(securityPath())
-        && getAfter(securityPath()).data.primerAdministradorConfigurado == true
-        && getAfter(securityPath()).data.primerAdministradorEmail == authEmail();
-    }
-
-    function bootstrapSecurity() {
-      return signedIn()
-        && bootstrapOpen()
-        && request.resource.data.primerAdministradorConfigurado == true
-        && request.resource.data.primerAdministradorEmail == authEmail()
-        && existsAfter(userPath())
-        && getAfter(userPath()).data.rol == 'administrador'
-        && getAfter(userPath()).data.activo == true;
-    }
-
-    function validSecurityDocument() {
-      return request.resource.data.primerAdministradorConfigurado == true
-        && request.resource.data.primerAdministradorEmail is string
-        && request.resource.data.inicializacionCerrada == true;
-    }
-
-    function preservesSecurityOwner() {
-      return resource.data.primerAdministradorConfigurado == true
-        && request.resource.data.primerAdministradorConfigurado == true
-        && request.resource.data.primerAdministradorEmail == resource.data.primerAdministradorEmail
-        && request.resource.data.inicializacionCerrada == true;
-    }
-
-    function primaryAdminProtected(emailId) {
-      return !securityConfigured()
-        || get(securityPath()).data.primerAdministradorEmail != emailId
-        || (request.resource.data.rol == 'administrador' && request.resource.data.activo == true);
-    }
-
-    function noPriceOverridesOnCreate() {
-      return !('ajustesPrecio' in request.resource.data)
-        || request.resource.data.ajustesPrecio == {};
-    }
-
-    function preservesPriceOverrides() {
-      return (
-          !('ajustesPrecio' in resource.data)
-          && (!('ajustesPrecio' in request.resource.data) || request.resource.data.ajustesPrecio == {})
-        )
-        || (
-          ('ajustesPrecio' in resource.data)
-          && ('ajustesPrecio' in request.resource.data)
-          && request.resource.data.ajustesPrecio == resource.data.ajustesPrecio
-        );
-    }
-
-    function noDiscountOverrideOnCreate() {
-      return !('aplicarDescuentoCantidad' in request.resource.data)
-        || request.resource.data.aplicarDescuentoCantidad == true;
-    }
-
-    function preservesDiscountSetting() {
-      return (
-          !('aplicarDescuentoCantidad' in resource.data)
-          && (!('aplicarDescuentoCantidad' in request.resource.data) || request.resource.data.aplicarDescuentoCantidad == true)
-        )
-        || (
-          ('aplicarDescuentoCantidad' in resource.data)
-          && ('aplicarDescuentoCantidad' in request.resource.data)
-          && request.resource.data.aplicarDescuentoCantidad == resource.data.aplicarDescuentoCantidad
-        );
-    }
-
-    function preservesCreationDate() {
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdAtMs', 'createdAtIso']);
-    }
-
-    function preservesCaseIdentity() {
-      return (
-          (!('creadoPor' in resource.data) && !('creadoPor' in request.resource.data))
-          || (
-            ('creadoPor' in resource.data)
-            && ('creadoPor' in request.resource.data)
-            && request.resource.data.creadoPor == resource.data.creadoPor
-          )
-        )
-        && (
-          !('historial' in resource.data)
-          || resource.data.historial.size() == 0
-          || (
-            ('historial' in request.resource.data)
-            && request.resource.data.historial.size() >= resource.data.historial.size()
-            && request.resource.data.historial[0] == resource.data.historial[0]
-          )
-        );
-    }
-
-
-    function isFacturada(data) {
-      return ('facturacion' in data)
-        && ('estadoFactura' in data.facturacion)
-        && data.facturacion.estadoFactura == 'facturada';
-    }
-
-    function validFacturacionStructure(data) {
-      return !isFacturada(data)
-        || (
-          ('fechaFacturacionIso' in data.facturacion)
-          && data.facturacion.fechaFacturacionIso is string
-          && data.facturacion.fechaFacturacionIso.size() > 0
-          && ('fechaFacturacionMs' in data.facturacion)
-          && data.facturacion.fechaFacturacionMs is number
-          && data.facturacion.fechaFacturacionMs > 0
-          && ('periodoFacturacion' in data.facturacion)
-          && data.facturacion.periodoFacturacion is string
-          && data.facturacion.periodoFacturacion.matches('^[0-9]{4}-[0-9]{2}$')
-          && ('facturadoPor' in data.facturacion)
-          && data.facturacion.facturadoPor is string
-          && data.facturacion.facturadoPor.size() > 0
-          && ('valorFacturado' in data.facturacion)
-          && data.facturacion.valorFacturado is number
-          && data.facturacion.valorFacturado >= 0
-          && ('cantidadVisasFacturadas' in data.facturacion)
-          && data.facturacion.cantidadVisasFacturadas is number
-          && data.facturacion.cantidadVisasFacturadas > 0
-        );
-    }
-
-    function validFacturacionAudit(data) {
-      return validFacturacionStructure(data)
-        && (!isFacturada(data) || data.facturacion.facturadoPor == authEmail());
-    }
-
-    function preservesFacturacionAudit() {
-      return !isFacturada(resource.data)
-        || !isFacturada(request.resource.data)
-        || (
-          request.resource.data.facturacion.fechaFacturacionIso == resource.data.facturacion.fechaFacturacionIso
-          && request.resource.data.facturacion.fechaFacturacionMs == resource.data.facturacion.fechaFacturacionMs
-          && request.resource.data.facturacion.periodoFacturacion == resource.data.facturacion.periodoFacturacion
-          && request.resource.data.facturacion.facturadoPor == resource.data.facturacion.facturadoPor
-          && request.resource.data.facturacion.fechaFacturacionInferida == resource.data.facturacion.fechaFacturacionInferida
-          && request.resource.data.facturacion.origenFechaFacturacion == resource.data.facturacion.origenFechaFacturacion
-          && request.resource.data.facturacion.valorFacturado == resource.data.facturacion.valorFacturado
-          && request.resource.data.facturacion.cantidadVisasFacturadas == resource.data.facturacion.cantidadVisasFacturadas
-        );
-    }
-
-    function validFacturacionUpdate() {
-      return (
-          !isFacturada(resource.data)
-          && isFacturada(request.resource.data)
-          && validFacturacionAudit(request.resource.data)
-        )
-        || (
-          isFacturada(resource.data)
-          && isFacturada(request.resource.data)
-          && preservesFacturacionAudit()
-        )
-        || !isFacturada(request.resource.data);
-    }
-
-    match /casos/{casoId} {
-      allow read: if activeUser();
-      allow create: if (activeAdmin() && validFacturacionStructure(request.resource.data)) || (activeUser() && noPriceOverridesOnCreate() && noDiscountOverrideOnCreate() && validFacturacionAudit(request.resource.data));
-      allow update: if preservesCaseIdentity() && ((activeAdmin() && validFacturacionStructure(request.resource.data)) || (activeUser() && preservesCreationDate() && preservesPriceOverrides() && preservesDiscountSetting() && validFacturacionUpdate()));
-      allow delete: if activeAdmin();
-    }
-
-    match /configuracion/seguridad {
-      allow read: if signedIn();
-      allow create: if (activeAdmin() && validSecurityDocument() && request.resource.data.primerAdministradorEmail == authEmail()) || bootstrapSecurity();
-      allow update: if activeAdmin() && validSecurityDocument() && preservesSecurityOwner();
-      allow delete: if false;
-    }
-
-    match /configuracion/{documentoId} {
-      allow read: if documentoId != 'seguridad' && activeUser();
-      allow create, update: if documentoId != 'seguridad' && activeAdmin();
-      allow delete: if false;
-    }
-
-    match /usuariosSigv/{emailId} {
-      allow get: if signedIn() && (emailId == authEmail() || activeAdmin());
-      allow list: if activeAdmin();
-      allow create: if (activeAdmin() && validUserDocument(emailId)) || bootstrapUser(emailId);
-      allow update: if (activeAdmin() && validUserDocument(emailId) && primaryAdminProtected(emailId)) || bootstrapUser(emailId);
-      allow delete: if false;
-    }
-
-    match /usuarios/{userId} {
-      allow read: if activeUser();
-      allow create, update: if activeUser() && request.auth.uid == userId;
-      allow delete: if false;
-    }
-
-    match /diagnosticoSigv/{documentoId} {
-      allow read, create, update: if activeUser();
-      allow delete: if false;
-    }
-
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
+    const datos = await respuesta.json();
+    encontrados.push(...(datos.items || []).filter(item => item.status !== 'cancelled'));
+    pageToken = datos.nextPageToken || '';
+  } while (pageToken);
+  return encontrados;
 }
